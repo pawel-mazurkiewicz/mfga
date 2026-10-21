@@ -23,7 +23,7 @@ export const sha256hex = (s) => createHash("sha256").update(String(s)).digest("h
 export const b64 = (s) => Buffer.from(String(s)).toString("base64");
 
 /** mulberry32: small seeded PRNG so every run builds the same world. */
-export function rng(seed) {
+function rng(seed) {
   let a = seed >>> 0;
   return () => {
     a = (a + 0x6d2b79f5) >>> 0;
@@ -188,6 +188,9 @@ export function createWorld({ now = DEFAULT_NOW, locale = "en", seed = 2010 } = 
     if (i === 4) story.ai = true;
   });
 
+  // The viewer's own posts: on their profile only, in no Feeds-tab source.
+  timeline(300, 1440, 3).forEach((time, i) => addStory({ actor: viewer, kind: i === 1 ? "photo" : "text", template: texts.friends[(i * 7 + 2) % texts.friends.length], time, sources: [] }));
+
   const byTimeDesc = (a, b) => stories.get(b).time - stories.get(a).time;
   const feedOf = (source) => [...stories.values()].filter((s) => s.sources.has(source)).map((s) => s.postId).sort(byTimeDesc);
   const feeds = { friends: feedOf("friends"), groups: feedOf("groups"), pages: feedOf("pages"), favorites: feedOf("favorites") };
@@ -315,11 +318,12 @@ function buildJunk({ locale, advertisers, strangers, members, friends, newId }) 
  */
 export function junkPlan(world, feedName, page, organicCount) {
   const styleIndex = Object.keys(FEED_STYLES).indexOf(feedName);
-  const n = world.junk.length;
   const picks = feedName === "top" || feedName === "all" ? 3 : 2;
+  // Consecutive kinds per page, so every feed cycles through all junk kinds within a few pages.
+  const base = page * picks + styleIndex * 5;
   const out = [];
   for (let k = 0; k < picks; k++) {
-    const junk = world.junk[(page * 3 + styleIndex * 2 + k * 5) % n];
+    const junk = world.junk[(base + k) % world.junk.length];
     out.push({ position: Math.min(1 + k * 2, organicCount + k), junk, instance: `${junk.id}:${feedName}:${page}:${k}` });
   }
   return out;

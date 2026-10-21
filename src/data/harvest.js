@@ -165,7 +165,9 @@ const isHarvestScript = (node) =>
 export function startHarvest({ onUpdate } = {}) {
   const harvest = createHarvest();
   const parsed = new WeakSet();
-  const pending = new Set(); // scripts whose text was still incomplete when seen
+  const broken = new WeakSet(); // complete but not JSON: never retried
+  const pending = new Set(); // seen while the document was still loading, text maybe incomplete
+  let swept = false;
   let notifyQueued = false;
   let observer = null;
   let resolveReady;
@@ -182,18 +184,27 @@ export function startHarvest({ onUpdate } = {}) {
 
   /** Parses a script once its text is complete JSON. `force` skips the data-content-len hint. */
   function read(script, force = false) {
-    if (parsed.has(script)) return;
+    if (parsed.has(script) || broken.has(script)) return;
     const text = script.textContent || "";
     const expected = Number(script.getAttribute("data-content-len"));
-    if (!force && expected > 0 && text.length < expected) {
-      pending.add(script);
-      return;
-    }
+    const incomplete = !text.trim() || (!force && expected > 0 && text.length < expected);
     let json;
-    try {
-      json = JSON.parse(text);
-    } catch {
-      pending.add(script);
+    let ok = false;
+    if (!incomplete) {
+      try {
+        json = JSON.parse(text);
+        ok = true;
+      } catch {
+        // incomplete while loading, or not JSON at all
+      }
+    }
+    if (!ok) {
+      if (swept) {
+        pending.delete(script);
+        if (!incomplete) markBroken(script);
+      } else {
+        pending.add(script);
+      }
       return;
     }
     pending.delete(script);
@@ -203,11 +214,21 @@ export function startHarvest({ onUpdate } = {}) {
     notify();
   }
 
+  function markBroken(script) {
+    broken.add(script);
+    internal(harvest).failed++;
+    health.count("harvest.unparsed");
+  }
+
+  // The parser inserts a script before its text has fully arrived, and Chrome appends the rest without any
+  // mutation record. So while loading, incomplete scripts wait in `pending` and are retried on every later
+  // mutation (the parser inserting the next node means the previous script is complete) and in the
+  // DOMContentLoaded sweep. Afterwards, scripted inserts announce their text with a mutation of their own.
   const onMutations = safe(
     "harvest",
     (records) => {
       for (const r of records) {
-        if (isHarvestScript(r.target)) read(r.target); // the parser appended text to a script
+        if (isHarvestScript(r.target)) read(r.target); // a text node was added to a script (scripted inserts)
         for (const n of r.addedNodes) if (isHarvestScript(n)) read(n);
       }
       for (const s of pending) read(s);
@@ -229,10 +250,10 @@ export function startHarvest({ onUpdate } = {}) {
   const finish = safe(
     "harvest",
     () => {
+      swept = true;
       try {
+        for (const s of [...pending]) read(s, true); // also covers blocks Facebook already removed
         refresh();
-        internal(harvest).failed += pending.size;
-        if (pending.size) health.count("harvest.unparsed", pending.size);
         pending.clear();
       } finally {
         resolveReady();

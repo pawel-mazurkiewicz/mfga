@@ -165,14 +165,23 @@ const BODY_MARKERS = [
 
 const SKIP_TEXT = new Set(["title", "desc", "style", "script", "template"]);
 
+/** The first body element of a post (message, attachment, footer...): the header ends there. */
+export function headerEnd(root) {
+  return root.querySelector(BODY_MARKERS);
+}
+
 /** Whether `el` comes before `end` in document order (and does not contain it). */
-function before(el, end) {
+export function before(el, end) {
   if (!end) return true;
   const pos = el.compareDocumentPosition(end);
   return Boolean(pos & Node.DOCUMENT_POSITION_FOLLOWING) && !(pos & Node.DOCUMENT_POSITION_CONTAINED_BY);
 }
 
-const isDecoyContainer = (el) => el.closest('[aria-hidden="true"]') != null;
+/** Inside an aria-hidden honeypot of this unit (an aria-hidden page behind a dialog does not count). */
+function inDecoy(el, unit) {
+  const hidden = el.closest('[aria-hidden="true"]');
+  return hidden != null && unit.contains(hidden);
+}
 
 /** A glyph or wrapper the reader does not see: hidden, transparent, zero-size, or an absolutely placed decoy. */
 function isUnpainted(el, view) {
@@ -189,7 +198,7 @@ function isUnpainted(el, view) {
  * The text a reader sees inside `el`: decoy letters dropped, flex children re-sorted by their CSS `order`
  * (Facebook shuffles one-letter spans and restores the visual order with `order`).
  */
-export function paintedText(el, view = el.ownerDocument.defaultView) {
+function paintedText(el, view = el.ownerDocument.defaultView) {
   let nodes = [...el.childNodes];
   if (view.getComputedStyle(el).display.includes("flex")) {
     nodes = nodes
@@ -217,15 +226,15 @@ function carrierTexts(el, resolve) {
 }
 
 function headerParts(unit) {
-  const end = unit.querySelector(BODY_MARKERS);
-  const inHeader = (el) => before(el, end) && !isDecoyContainer(el);
+  const end = headerEnd(unit);
+  const inHeader = (el) => before(el, end) && !inDecoy(el, unit);
   const name = unit.querySelector('[data-ad-rendering-role="profile_name"]');
-  const heading = [...unit.querySelectorAll('h2, h3, h4, [role="heading"]')].find((h) => h.localName !== "h5" && !isDecoyContainer(h)) ?? null;
+  const heading = [...unit.querySelectorAll('h2, h3, h4, [role="heading"]')].find((h) => h.localName !== "h5" && !inDecoy(h, unit)) ?? null;
   return { end, inHeader, name, heading };
 }
 
 /** Avatar, author and member links: their labels are names, which are never matched (a Page may be called "Ad"). */
-function isPersonLink(a) {
+export function isPersonLink(a) {
   const href = a.getAttribute("href") ?? "";
   const tn = tnCode(href) ?? "";
   return (
@@ -360,6 +369,16 @@ export function closestUnit(el) {
   return unit;
 }
 
+/** Stories trays in `node`, plus "Stories" regions that hold no tray (cohorts without data-focus-target). */
+function storyBlocks(node) {
+  const blocks = node.matches(STORIES_SELECTOR) ? [node] : [...node.querySelectorAll(STORIES_SELECTOR)];
+  const regions = node.matches('[role="region"][aria-label]') ? [node] : node.querySelectorAll('[role="region"][aria-label]');
+  for (const r of regions) {
+    if (isWord("stories", r.getAttribute("aria-label")) && !r.querySelector(STORIES_SELECTOR)) blocks.push(r);
+  }
+  return blocks;
+}
+
 function observedLabels(unit) {
   const button = (role) => unit.querySelector(`[data-ad-rendering-role="${role}"]`)?.closest('[role="button"]')?.getAttribute("aria-label");
   return {
@@ -393,7 +412,7 @@ export function startCleaner({ settings, route, onStats } = {}) {
   const pending = new Set();
   const dirtyUnits = new Set();
   const dirtyBlocks = new Set();
-  const stats = { seen: 0, hidden: 0, pending: 0, skeletons: 0, virtualized: 0, undecodable: 0, reasons: {}, signals: {}, probe: {} };
+  const stats = { seen: 0, hidden: 0, skeletons: 0, virtualized: 0, undecodable: 0, reasons: {}, signals: {}, probe: {} };
   const emit = debounce(() => onStats?.(snapshot()), 250);
 
   function snapshot() {
@@ -422,8 +441,11 @@ export function startCleaner({ settings, route, onStats } = {}) {
     return isNearBottom(rect.bottom + window.scrollY, doc.documentElement.scrollHeight);
   }
 
-  /** Marks `target` hidden for `verdict` (or clears it), keyed for bottom-guard re-checks by `owner`. */
-  function mark(owner, target, verdict) {
+  /**
+   * Marks `target` hidden for `verdict` (or clears it). `owner` is what the bottom guard measures and the
+   * stats count; `counts` is false for a second element hidden with the same owner.
+   */
+  function mark(owner, target, verdict, counts = true) {
     if (!verdict) {
       pending.delete(owner);
       target?.removeAttribute(HIDE_ATTR);
@@ -436,7 +458,7 @@ export function startCleaner({ settings, route, onStats } = {}) {
     }
     pending.delete(owner);
     target.setAttribute(HIDE_ATTR, verdict.reason);
-    count(owner, verdict);
+    if (counts) count(owner, verdict);
   }
 
   function applyUnit(unit, state) {
@@ -490,22 +512,24 @@ export function startCleaner({ settings, route, onStats } = {}) {
     if (!r.hits.length && r.complete) probe(unit);
   }
 
-  /** Top-of-feed blocks that are not units: the Stories tray and its labelled region. */
-  function processBlock(tray) {
-    if (!tray.isConnected || tray.querySelector(UNIT_SELECTOR)) return;
+  /**
+   * Top-of-feed blocks that are not units: the Stories tray (hidden with its labelled wrapper region) or,
+   * on cohorts without data-focus-target, a region labelled "Stories".
+   */
+  function processBlock(block) {
+    if (!block.isConnected || block.querySelector(UNIT_SELECTOR)) return;
     const verdict = chooseVerdict([{ reason: "stories", signal: "tray" }], current(), feedRoute);
-    const outer = tray.parentElement?.closest('[role="region"]');
-    const blocks = outer && !outer.querySelector(UNIT_SELECTOR) && outer.closest('[role="main"]') ? [tray, outer] : [tray];
-    for (const block of blocks) mark(block, block, verdict);
+    mark(block, block, verdict);
+    if (!block.matches(STORIES_SELECTOR)) return;
+    const outer = block.parentElement?.closest('[role="region"]');
+    if (outer && !outer.querySelector(UNIT_SELECTOR) && outer.closest('[role="main"]')) mark(block, outer, verdict, false);
   }
 
   function collect(node) {
     if (node.nodeType !== 1) return;
     cache.capture(node);
     for (const u of node.matches(UNIT_SELECTOR) ? [node] : node.querySelectorAll(UNIT_SELECTOR)) dirtyUnits.add(u);
-    if (node.matches(STORIES_SELECTOR)) dirtyBlocks.add(node);
-    for (const t of node.querySelectorAll(STORIES_SELECTOR)) dirtyBlocks.add(t);
-    for (const r of node.querySelectorAll('[role="region"][aria-label]')) if (isWord("stories", r.getAttribute("aria-label"))) dirtyBlocks.add(r);
+    for (const b of storyBlocks(node)) dirtyBlocks.add(b);
   }
 
   const flush = rafBatch(
@@ -542,7 +566,7 @@ export function startCleaner({ settings, route, onStats } = {}) {
 
   function reapplyAll() {
     for (const unit of doc.querySelectorAll(UNIT_SELECTOR)) dirtyUnits.add(unit);
-    for (const block of doc.querySelectorAll(`[${HIDE_ATTR}]:not(${UNIT_SELECTOR} > *), ${STORIES_SELECTOR}`)) dirtyBlocks.add(block);
+    for (const block of storyBlocks(doc.body)) dirtyBlocks.add(block);
     flush();
   }
 

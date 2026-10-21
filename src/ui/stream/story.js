@@ -2,10 +2,10 @@
 // inline, attachments, the shared story, the "time · Comment · Like · Share" line and the UFI box.
 import { h, joinNodes, replaceChildren } from "../dom.js";
 import { t } from "../../shared/i18n.js";
-import { passiveHeadline, truncateSegments } from "./format.js";
+import { textSegments } from "../../data/text.js";
 import { renderAttachments } from "./attachments.js";
+import { passiveHeadline, truncateSegments } from "./format.js";
 import { avatar, link, linkButton, nowMs, routeClicks, segmentNodes, sep } from "./parts.js";
-import { textSegments } from "./segments.js";
 import { timeNode } from "./time.js";
 import { createFeedback } from "./ufi.js";
 
@@ -19,7 +19,7 @@ function actorNodes(actors) {
 
 function targetNodes(target) {
   if (!target?.name) return null;
-  return [h("i.mfga-story-arrow", { role: "img", "aria-label": t("story.to") }), link(target.url, { class: "mfga-story-actor mfga-story-target" }, target.name)];
+  return [" ", h("i.mfga-story-arrow", { role: "img", "aria-label": t("story.to") }), " ", link(target.url, { class: "mfga-story-actor mfga-story-target" }, target.name)];
 }
 
 /** Message text; long texts are cut with 2010's "... See More". */

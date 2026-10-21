@@ -50,9 +50,6 @@ export function el(tag, attrMap, ...kids) {
   return raw(`<${tag}${attrs(attrMap)}>${children(kids)}</${tag}>`);
 }
 
-/** Concatenates parts (Raw, strings are escaped) into one Raw. */
-export const join = (...parts) => raw(children(parts));
-
 /**
  * JSON as Facebook inlines it: "/" escaped as "\/" and every non-ASCII character as \uXXXX, which also makes
  * the text safe inside <script> (no "</script", no U+2028).

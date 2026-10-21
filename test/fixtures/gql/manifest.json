@@ -1,0 +1,419 @@
+[
+  {
+    "file": "organic-friend-text.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      }
+    ]
+  },
+  {
+    "file": "friend-photo.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      }
+    ]
+  },
+  {
+    "file": "album.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      }
+    ]
+  },
+  {
+    "file": "video.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      }
+    ]
+  },
+  {
+    "file": "link-share.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      }
+    ]
+  },
+  {
+    "file": "group-post.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      }
+    ]
+  },
+  {
+    "file": "page-post.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      }
+    ]
+  },
+  {
+    "file": "shared-story.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      }
+    ]
+  },
+  {
+    "file": "unavailable-attachment.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      }
+    ]
+  },
+  {
+    "file": "sponsored-th_dat_spo.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": false,
+        "reason": "sponsored-data"
+      }
+    ]
+  },
+  {
+    "file": "sponsored-random-key.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": false,
+        "reason": "sponsored-data"
+      }
+    ]
+  },
+  {
+    "file": "sponsored-cat-sensitive.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": false,
+        "reason": "category:SPONSORED",
+        "category": "SPONSORED"
+      }
+    ]
+  },
+  {
+    "file": "sponsored-label.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": false,
+        "reason": "sponsored-label"
+      }
+    ]
+  },
+  {
+    "file": "auction-distance.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": false,
+        "reason": "auction-distance"
+      }
+    ]
+  },
+  {
+    "file": "reels-showcase.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": false,
+        "reason": "unit:ShowcaseFeedUnit"
+      }
+    ]
+  },
+  {
+    "file": "pymk.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": false,
+        "reason": "unit:PaginatedPeopleYouMayKnowFeedUnit"
+      }
+    ]
+  },
+  {
+    "file": "follow-suggestion.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": false,
+        "reason": "follow-suggestion"
+      }
+    ]
+  },
+  {
+    "file": "join-suggestion.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": false,
+        "reason": "join-suggestion"
+      }
+    ]
+  },
+  {
+    "file": "unconnected.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": false,
+        "reason": "unconnected"
+      }
+    ]
+  },
+  {
+    "file": "recommended.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": false,
+        "reason": "recommended"
+      }
+    ]
+  },
+  {
+    "file": "ai-label.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC",
+        "hideAI": {
+          "keep": false,
+          "reason": "ai"
+        }
+      }
+    ]
+  },
+  {
+    "file": "obfuscated-typename.jsonl",
+    "kind": "feed",
+    "env": "obfuscated-typename.env.json",
+    "expect": [
+      {
+        "keep": false,
+        "reason": "sponsored-data"
+      },
+      {
+        "keep": false,
+        "reason": "unit:AdsSideFeedUnit"
+      }
+    ]
+  },
+  {
+    "file": "feed-page-1.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      },
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      },
+      {
+        "keep": false,
+        "reason": "sponsored-data"
+      },
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      },
+      {
+        "keep": false,
+        "reason": "unit:PaginatedPeopleYouMayKnowFeedUnit"
+      },
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      },
+      {
+        "keep": false,
+        "reason": "unit:ShowcaseFeedUnit"
+      },
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      },
+      {
+        "keep": false,
+        "reason": "follow-suggestion"
+      },
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      },
+      {
+        "keep": false,
+        "reason": "category:SPONSORED",
+        "category": "SPONSORED"
+      },
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      },
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      }
+    ]
+  },
+  {
+    "file": "feed-page-2.jsonl",
+    "kind": "feed",
+    "env": null,
+    "expect": [
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      }
+    ]
+  },
+  {
+    "file": "ssr-home.sjs.jsonl",
+    "kind": "sjs",
+    "env": null,
+    "preloaderId": "adp_CometModernHomeFeedQueryRelayPreloader_6f1c0de5a1b2c3d4e5f6071",
+    "sameAs": "feed-page-1.jsonl",
+    "expect": [
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      },
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      },
+      {
+        "keep": false,
+        "reason": "sponsored-data"
+      },
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      },
+      {
+        "keep": false,
+        "reason": "unit:PaginatedPeopleYouMayKnowFeedUnit"
+      },
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      },
+      {
+        "keep": false,
+        "reason": "unit:ShowcaseFeedUnit"
+      },
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      },
+      {
+        "keep": false,
+        "reason": "follow-suggestion"
+      },
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      },
+      {
+        "keep": false,
+        "reason": "category:SPONSORED",
+        "category": "SPONSORED"
+      },
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      },
+      {
+        "keep": true,
+        "reason": "keep",
+        "category": "ORGANIC"
+      }
+    ]
+  },
+  {
+    "file": "comments.json",
+    "kind": "comments",
+    "env": null,
+    "expect": []
+  }
+]

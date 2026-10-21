@@ -80,7 +80,9 @@ export function createMergedFeed({ sources, pageSize = 10, keywords = [], maxFet
     return best;
   }
 
-  const finished = (l) => l.src.done || !!l.failed;
+  function finished(lane) {
+    return lane.src.done || !!lane.failed;
+  }
 
   async function pull(lane) {
     const page = await lane.src.next();

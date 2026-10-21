@@ -18,6 +18,7 @@ function rootCss() {
   return `
 .mfga-ui{--mfga-font:${FONT_LUCIDA};font-family:var(--mfga-font);font-size:11px;font-weight:normal;font-style:normal;line-height:1.28;color:#333;text-align:left;direction:ltr;letter-spacing:normal;color-scheme:light;-webkit-text-size-adjust:100%}
 html[data-mfga-font="tahoma"] .mfga-ui{--mfga-font:${FONT_TAHOMA}}
+.mfga-ui [hidden]{display:none!important}
 .mfga-ui :where(h1,h2,h3,h4,h5,h6,p,ul,ol,li,dl,dt,dd,figure,form,fieldset,legend,blockquote,table,td,th){margin:0;padding:0;border:0}
 .mfga-ui :where(h1,h2,h3,h4,h5,h6){color:#333;font-size:13px;font-weight:bold}
 .mfga-ui :where(h1){font-size:14px}
@@ -36,15 +37,16 @@ function linkCss() {
 .mfga-ui :where(a:hover){text-decoration:underline}`;
 }
 
-// .uiButton / .uiButtonConfirm: [FB12] borders, shadow, active and disabled states; the grey gradient and its
-// 1px top highlight are measured from the 2010 capture ("Become a Fan": #F5F5F5 -> #E3E3E3).
+// .uiButton / .uiButtonConfirm: [FB12] shadow, confirm colours, active and disabled states. The grey button is
+// measured from the 2010 capture ("Become a Fan"): gradient #F5F5F5 -> #E3E3E3 under a 1px highlight, and a
+// border lighter than FB12's #999/#888 (the resampled rows fit #AAA with a darker bottom edge).
 function buttonCss() {
   return `
-.mfga-btn{display:inline-block;box-sizing:content-box;margin:0;padding:3px 6px 4px;border:1px solid #999;border-bottom-color:#888;border-radius:0;background:#EEE linear-gradient(#F5F5F5,#E3E3E3);box-shadow:inset 0 1px 0 #FAFAFA,0 1px 0 rgba(0,0,0,.1);color:#333;font:bold 11px/13px ${FONT};text-align:center;text-decoration:none;vertical-align:top;white-space:nowrap;cursor:pointer;-webkit-appearance:none;appearance:none}
+.mfga-btn{display:inline-block;box-sizing:content-box;margin:0;padding:3px 6px 4px;border:1px solid #AAA;border-bottom-color:#999;border-radius:0;background:#EEE linear-gradient(#F5F5F5,#E3E3E3);box-shadow:inset 0 1px 0 #FAFAFA,0 1px 0 rgba(0,0,0,.1);color:#333;font:bold 11px/13px ${FONT};text-align:center;text-decoration:none;vertical-align:top;white-space:nowrap;cursor:pointer;-webkit-appearance:none;appearance:none}
 .mfga-btn:hover{text-decoration:none}
-.mfga-btn:active{background:#DDD;border-bottom-color:#999;box-shadow:0 1px 0 rgba(0,0,0,.05)}
+.mfga-btn:active{background:#DDD;border-bottom-color:#AAA;box-shadow:0 1px 0 rgba(0,0,0,.05)}
 .mfga-btn+.mfga-btn{margin-left:4px}
-.mfga-btn .mfga-ico{margin:0 5px 0 -1px;vertical-align:top}
+.mfga-btn .mfga-ico{margin:-1px 5px -2px -1px;vertical-align:top}
 .mfga-btn-confirm{background:#5B74A8;border-color:#29447E #29447E #1A356E;box-shadow:inset 0 1px 0 #8A9CC2,0 1px 0 rgba(0,0,0,.1);color:#FFF}
 .mfga-btn-confirm:active{background:#4F6AA3;border-bottom-color:#29447E;box-shadow:inset 0 1px 0 #45619D}
 .mfga-btn-small{padding:1px 5px 2px;line-height:12px}
@@ -69,7 +71,7 @@ function textCss() {
   return `
 .mfga-muted{color:#808080}
 .mfga-sep{color:#999}
-.mfga-sep:empty::before{content:" \\00B7 ";white-space:pre}`;
+.mfga-sep:empty::before{content:" · ";white-space:pre}`;
 }
 
 // Right-column section: 11px bold header, "See All" on the right, #E9E9E9 rule 6px below the baseline.

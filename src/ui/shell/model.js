@@ -8,6 +8,7 @@ const MAX_CHAT = 8;
 
 /** The viewer's photos for a profile URL (profile.php?id=… gets sk=photos, vanity URLs get /photos). */
 export function photosUrl(profileUrl) {
+  if (!profileUrl) return `${FB}/me/`;
   let u;
   try {
     u = new URL(profileUrl, FB);

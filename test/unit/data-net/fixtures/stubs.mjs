@@ -81,10 +81,11 @@ export function createClassifier() {
 }
 
 /** Minimal Story: only the fields data-net reads. */
-export function extractStory(node, { sources = [] } = {}) {
-  if (!node || (!node.post_id && !node.id)) return null;
+export function extractStory(node, { sources = [], dedupKey } = {}) {
+  const key = node?.post_id || node?.id || dedupKey;
+  if (!key) return null;
   return {
-    key: String(node.post_id || node.id),
+    key: String(key),
     postId: node.post_id ?? null,
     nodeId: node.id ?? null,
     time: Number.isFinite(node.creation_time) ? node.creation_time : null,

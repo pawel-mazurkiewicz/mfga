@@ -11,7 +11,7 @@ import { errorRows, formatValue, groupCounters, otherEntries, reportFileName, sa
 const formatCount = (n) => n.toLocaleString(getLocale() === "pl" ? "pl-PL" : "en-US");
 
 /** t() with Node placeholders: "Saved {file}." + {file: <a>} -> ["Saved ", <a>, "."] */
-export function tNodes(key, nodes) {
+function tNodes(key, nodes) {
   return t(key)
     .split(/(\{\w+\})/)
     .filter(Boolean)
@@ -22,7 +22,6 @@ export function healthPanel({ binder, settings, healthSnapshot, exportReport }) 
   const status = h("div.mfga-health-status", { role: "status" });
   const exported = h("div.mfga-health-exported", { role: "status" });
   const details = h("div.mfga-health-details");
-  let blobUrl = null;
 
   const refresh = safe(
     "settings-dialog",
@@ -34,14 +33,14 @@ export function healthPanel({ binder, settings, healthSnapshot, exportReport }) 
     { disableOnError: false },
   );
 
+  // A data: link rather than a blob: URL: Firefox content scripts own their blobs under a different
+  // principal, which can turn the download into a blocked navigation.
   async function exportNow() {
     try {
-      const report = sanitizeReport(await exportReport());
+      const json = `${JSON.stringify(sanitizeReport(await exportReport()), null, 2)}\n`;
       const file = reportFileName();
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
-      blobUrl = URL.createObjectURL(new Blob([`${JSON.stringify(report, null, 2)}\n`], { type: "application/json" }));
       const link = h("a.mfga-health-file", { download: file }, file);
-      link.href = blobUrl; // our own blob: URL; h() deliberately lets only http(s)/mailto through
+      link.href = `data:application/json;charset=utf-8,${encodeURIComponent(json)}`; // ours; h() only passes http(s)/mailto
       replaceChildren(exported, tNodes("settings.health.exported", { file: link }), " ", externalLink(ISSUES_URL, t("settings.health.attach")), ".");
       link.click();
     } catch (err) {
@@ -74,13 +73,7 @@ export function healthPanel({ binder, settings, healthSnapshot, exportReport }) 
     binder.checkbox("advanced.stopOnCheckpoint", t("settings.health.stopOnCheckpoint")),
   ]);
 
-  return {
-    el: h("div", status, actions, exported, details, advanced),
-    onShow: refresh,
-    dispose() {
-      if (blobUrl) URL.revokeObjectURL(blobUrl);
-    },
-  };
+  return { el: h("div", status, actions, exported, details, advanced), onShow: refresh };
 }
 
 function statusBox(snap) {
@@ -101,6 +94,7 @@ function snapshotSections(snap) {
           [t("settings.health.module"), t("settings.health.count"), t("settings.health.first")],
           errors.map(([module, n, first]) => [module, formatCount(n), first]),
           [1],
+          "mfga-health-errors",
         ),
       ),
     );
@@ -127,10 +121,11 @@ function section(title, content) {
 }
 
 /** Plain table; `numeric` lists the column indexes that are right-aligned counts. */
-function table(head, rows, numeric = []) {
+function table(head, rows, numeric = [], className = null) {
   const cell = (tag, value, i) => h(tag, { class: numeric.includes(i) ? "mfga-health-num" : null }, value);
   return h(
     "table.mfga-health-table",
+    { class: className },
     head ? h("thead", h("tr", head.map((v, i) => cell("th", v, i)))) : null,
     h("tbody", rows.map((r) => h("tr", r.map((v, i) => cell("td", v, i))))),
   );

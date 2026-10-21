@@ -33,7 +33,7 @@ export function parseImagePath(pathname) {
 function palette(id) {
   const x = hash(id);
   const hue = parseInt(x.slice(0, 4), 16) % 360;
-  return { hue, x, n: (i) => parseInt(x.slice(i * 2, i * 2 + 2), 16) };
+  return { hue, n: (i) => parseInt(x.slice(i * 2, i * 2 + 2), 16) };
 }
 
 const initials = (name) =>

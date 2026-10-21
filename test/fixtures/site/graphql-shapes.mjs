@@ -47,7 +47,7 @@ function groupRef(g) {
 }
 
 /** Ranges for "{mention}" names, #hashtags and URLs, with UTF-16 offsets (graphql-protocol §5.3). */
-export function messageRanges(text, mentions = []) {
+function messageRanges(text, mentions = []) {
   const ranges = [];
   for (const m of mentions) {
     const offset = text.indexOf(m.name);
@@ -220,7 +220,7 @@ function messageSection(story, ranges) {
   });
 }
 
-/** comet_sections.content.story: message, attachments, actors (with profile pictures), shared story. */
+/** comet_sections.content.story: message, attachments, actors (with profile pictures), shared copies. */
 function contentStory(world, story, ctx, attachments, shared) {
   const ranges = messageRanges(story.text, story.mentions);
   return {
@@ -229,7 +229,7 @@ function contentStory(world, story, ctx, attachments, shared) {
       above_message: null,
       info_icon: null,
       attachment_overlay: null,
-      attached_story: shared ? section("CometStoryAttachedStoryStrategy", { story: { attached_story: shared } }) : null,
+      attached_story: shared ? shared.strategy : null,
       message: messageSection(story, ranges),
       message_suffix: null,
       message_container: section("CometFeedStoryMessageContainerRenderingStrategy", { story: { message: { text: story.text }, referenced_sticker: null, attachments: [], comet_sections: { message: null }, id: story.nodeId } }),
@@ -247,7 +247,7 @@ function contentStory(world, story, ctx, attachments, shared) {
     ...(story.decoys ? { ghl_mocked_encrypted_link: `https://l.facebook.com/l.php?u=${b64url(hex(story.postId, 60))}&h=CF${hex(story.postId, 26)}`, ghl_label_mocked_cta_button: null } : {}),
     wwwURL: story.url,
     target_group: story.to ? { id: story.to.id } : null,
-    attached_story: shared,
+    attached_story: shared ? shared.content : null,
     id: story.nodeId,
   };
 }
@@ -351,7 +351,7 @@ function topReactions(total, seed) {
   return { edges };
 }
 
-export function viewerReactionInfo(reactionId) {
+function viewerReactionInfo(reactionId) {
   return reactionId ? { __typename: "FeedbackReactionInfo", id: reactionId, localized_name: REACTION_NAMES[reactionId] || "Like" } : null;
 }
 
@@ -429,29 +429,34 @@ function feedbackSection(world, story, ctx) {
   });
 }
 
-/** The reduced Story Facebook nests as attached_story (a shared post). Its title carries the original Page's
- * Follow button: a friend's share must not inherit it (graphql-protocol §5.4, §6.4 scope). */
-function attachedStory(world, original, ctx) {
+/**
+ * A re-shared post travels as three partial copies, as in the 2026-10 capture: node.attached_story (header
+ * only), content.story.attached_story (content) and content.story.comet_sections.attached_story (the inverted
+ * layout). A Page original carries its Follow button: a friend's share must not inherit it (§5.4, §6.4).
+ */
+function sharedCopies(world, original, ctx) {
   const attachment = attachmentFor(world, original, ctx);
+  const attachments = attachment ? [attachment] : [];
+  const content = contentStory(world, original, ctx, attachments, null);
+  const header = contextLayout(original, ctx, { followButton: original.actor.type === "Page" });
+  const hs = header.story.comet_sections;
   return {
-    __typename: "Story",
-    id: original.nodeId,
-    post_id: original.postId,
-    creation_time: original.time,
-    should_host_actor_link_in_watch: false,
-    actors: [actorRef(original.actor)],
-    permalink_url: original.url,
-    url: original.url,
-    message: { __typename: "TextWithEntities", text: original.text },
-    attachments: attachment ? [attachment] : [],
-    comet_sections: {
-      content: section("CometFeedStoryDefaultContentStrategy", { story: contentStory(world, original, ctx, attachment ? [attachment] : [], null) }),
-      context_layout: contextLayout(original, ctx, { followButton: original.actor.type === "Page" }),
-      timestamp: metadataSections(original)[0],
-      attached_story_layout: section("CometStoryAttachedStoryInvertedLayoutStrategy", { story: { id: original.nodeId } }),
-    },
-    encrypted_tracking: blob(`at:${original.postId}`),
-    feedback: { id: original.feedbackId },
+    node: { id: original.nodeId, should_host_actor_link_in_watch: false, comet_sections: { context_layout: header, footer: null }, encrypted_tracking: blob(`at:${original.postId}`), permalink_url: original.url, feedback: { id: original.feedbackId } },
+    content,
+    strategy: section("CometStoryAttachedStoryStrategy", {
+      story: {
+        attached_story: {
+          id: original.nodeId,
+          encrypted_tracking: blob(`at:${original.postId}`),
+          comet_sections: {
+            attached_story_layout: section("CometStoryAttachedStoryInvertedLayoutStrategy", {
+              story: { comet_sections: { metadata: hs.metadata, title: hs.title, actor_photo: hs.actor_photo, info_icon: null, attachment_overlay: null, message: content.comet_sections.message, message_suffix: null, message_container: content.comet_sections.message_container, message_sticker: null }, should_host_actor_link_in_watch: false, attachments, id: original.nodeId },
+            }),
+          },
+          attached_story: null,
+        },
+      },
+    }),
   };
 }
 
@@ -463,7 +468,7 @@ export function storyNode(world, story, ctx, markers = {}) {
   const attachment = attachmentFor(world, story, ctx);
   const attachments = attachment ? [attachment] : [];
   const original = story.shared ? world.story(story.shared) : null;
-  const shared = original ? attachedStory(world, original, ctx) : null;
+  const shared = original ? sharedCopies(world, original, ctx) : null;
   const sponsoredData = markers.sponsoredData
     ? { __typename: markers.sponsoredData === "obfuscated" ? OBFUSCATED_SPONSORED_DATA : "SponsoredData", lbl_adv_iden: `6${hex(story.postId, 12).replace(/\D/g, "7")}`, client_token: blob(`ct:${story.postId}`, 40), brs_filter_setting: null, post_rendering_loggers: null }
     : null;
@@ -483,7 +488,7 @@ export function storyNode(world, story, ctx, markers = {}) {
     cix_screen: null,
     attachments,
     future_of_feed_info: { should_reverse_message_and_attachment_position: false, should_overlay_header: false, aspect_ratio_update: -1, web_reshare_variant: "NORMAL" },
-    attached_story: shared,
+    attached_story: shared ? shared.node : null,
     bumpers: null,
     comet_sections: {
       __typename: "CometStorySections",

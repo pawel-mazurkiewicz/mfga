@@ -15,12 +15,12 @@ import { writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const T0 = 1792540800; // 2026-10-20T00:00:00Z: newest fixture story
+export const T0 = 1792540800; // 2026-10-21T00:00:00Z: newest fixture story
 export const VIEWER = { id: "100090000000001", name: "Mark Viewer" };
 export const STREAM_LABEL = "CometNewsFeed_viewerConnection$stream$CometNewsFeed_viewer_news_feed";
 export const PAGE_INFO_LABEL = "CometNewsFeed_viewerConnection$defer$CometNewsFeed_viewer_news_feed$page_info";
 export const PRELOADER_ID = "adp_CometModernHomeFeedQueryRelayPreloader_6f1c0de5a1b2c3d4e5f6071";
-export const CATEGORY = { ORGANIC: 1, ENGAGEMENT: 2, SPONSORED: 5, FB_SHORTS: 11 };
+export const CATEGORY = { ORGANIC: 1, ENGAGEMENT: 2, SPONSORED: 5 };
 export const REACTION = { LIKE: "1635855486666999", LOVE: "1678524932434102", HAHA: "115940658764963", WOW: "478547315650144" };
 
 const FB = "https://www.facebook.com";
@@ -820,6 +820,7 @@ export const STORIES = {
       time: at(2),
       actor: P.carol,
       text: "Wedding photos 💍",
+      title: "Carol Nowak added 23 new photos to the album Wedding.",
       attachments: [albumAttachment({ id: "9100000003", photoIds: ["5100000011", "5100000012", "5100000013", "5100000014", "5100000015"], count: 23 })],
       feedback: { reactions: 40, comments: 9, shares: 0, top: [[REACTION.LOVE, 30], [REACTION.LIKE, 10]] },
     }),
@@ -881,6 +882,7 @@ export const STORIES = {
       }),
       feedback: { reactions: 3, comments: 0, shares: 0, top: [[REACTION.HAHA, 3]] },
     }),
+  unavailable: () => buildStory({ postId: "9100000009", time: at(7) - 60, actor: P.erin, text: "Look at this", attachments: [unavailableAttachment()] }),
   sponsoredThDatSpo: () =>
     buildStory({ postId: "9100000010", time: at(8), actor: P.pizza, text: "Order now and get free delivery!", sponsored: { key: "th_dat_spo" }, attachments: [linkAttachment({ url: "https://shop.example.com/pizza", title: "Pizza Place delivery", description: "Hot in 30 minutes", source: "shop.example.com", imageId: "ad1" })] }),
   sponsoredRandomKey: () => buildStory({ postId: "9100000011", time: at(9), actor: P.news, text: "Subscribe for 1 zł", sponsored: { key: "qz_vb_dat_k9", at: "content" } }),
@@ -914,6 +916,7 @@ function scenarios() {
     "group-post": one(S.groupPost(), { ...keep, category: "ORGANIC" }),
     "page-post": one(S.pagePost(), { ...keep, category: "ORGANIC" }),
     "shared-story": one(S.shared(), { ...keep, category: "ORGANIC" }),
+    "unavailable-attachment": one(S.unavailable(), { ...keep, category: "ORGANIC" }),
     "sponsored-th_dat_spo": one(S.sponsoredThDatSpo(), dropped("sponsored-data"), { enc: CATEGORY.SPONSORED }),
     "sponsored-random-key": one(S.sponsoredRandomKey(), dropped("sponsored-data"), { enc: CATEGORY.SPONSORED }),
     "sponsored-cat-sensitive": one(S.sponsoredCategory(), { ...dropped("category:SPONSORED"), category: "SPONSORED" }, { enc: CATEGORY.SPONSORED }),
@@ -1021,6 +1024,7 @@ export function buildFixtureFiles() {
 export const FIXTURE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  for (const { file, content } of buildFixtureFiles()) writeFileSync(path.join(FIXTURE_DIR, file), content);
-  console.log(`wrote ${buildFixtureFiles().length} fixture files to ${FIXTURE_DIR}`);
+  const files = buildFixtureFiles();
+  for (const { file, content } of files) writeFileSync(path.join(FIXTURE_DIR, file), content);
+  console.log(`wrote ${files.length} fixture files to ${FIXTURE_DIR}`);
 }

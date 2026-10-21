@@ -4,6 +4,7 @@
 //   3. a full page load.
 import { safe, health } from "../shared/util.js";
 import { routeKey } from "./routes.js";
+import { mountRoot } from "./layout.js";
 
 const HELPER_WAIT_MS = 1500;
 
@@ -16,13 +17,9 @@ export function samePlace(a, b) {
   return a.origin === b.origin && normPath(a.pathname) === normPath(b.pathname) && a.search === b.search;
 }
 
-function facebookRoot(doc) {
-  return doc.querySelector('body > div[id^="mount_"]') || doc.querySelector('div[id^="mount_"]');
-}
-
 /** A native anchor inside Facebook's React root that leads to `target`, or null. */
 export function findNativeAnchor(target, doc = document) {
-  const root = facebookRoot(doc);
+  const root = mountRoot(doc);
   if (!root) return null;
   for (const a of root.querySelectorAll("a[href]")) {
     if (a.target && a.target !== "_self") continue;
@@ -65,7 +62,7 @@ export function createNavigator({ platform } = {}) {
   const go = safe("nav", (href, { hard = false } = {}) => {
     const url = new URL(href, location.href);
     if (hard || url.origin !== location.origin) return assign(url);
-    if (typeof platform?.page?.navigate === "function") return void viaHelper(url);
+    if (typeof platform?.page?.navigate === "function") return viaHelper(url);
     if (!clickNative(url)) assign(url);
   }, { disableOnError: false });
 

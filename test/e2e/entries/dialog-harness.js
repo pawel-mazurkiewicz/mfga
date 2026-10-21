@@ -18,12 +18,13 @@ const test = {
   closes: 0,
   snapshot: {},
   report: {},
+  reportError: null,
   store: null,
   platform: null,
   handle: null,
 
   /** Fresh settings store (optionally pre-seeded); records every update(patch) and reset(). */
-  async setup({ initial = null, snapshot = {}, report = {}, language = "en" } = {}) {
+  async setup({ initial = null, snapshot = {}, report = {} } = {}) {
     this.platform = basePlatform({ version: "1.0.0" });
     if (initial) await this.platform.storage.set(STORAGE_KEY, initial);
     const store = await createSettings(this.platform);
@@ -44,7 +45,6 @@ const test = {
     };
     store.subscribe(applyRoot);
     applyRoot(store.get());
-    setLocale(language === "auto" ? store.get().language : language);
     this.store = store;
     this.snapshot = snapshot;
     this.report = report;
@@ -56,7 +56,10 @@ const test = {
     this.handle = openSettingsDialog({
       settings: this.store,
       healthSnapshot: () => this.snapshot,
-      exportReport: () => this.report,
+      exportReport: async () => {
+        if (this.reportError) throw new Error(this.reportError);
+        return this.report;
+      },
       version: this.platform.version,
     });
   },
@@ -70,17 +73,22 @@ const test = {
     return this.store.get();
   },
 
-  /** A generic dialog with a primary button that keeps it open (returns false) and a plain one. */
-  openGeneric({ title = "Confirm Request", text = "Do you want to add Amy Winstead as a friend?" } = {}) {
+  /**
+   * A generic dialog with a primary button that keeps it open (returns false), an async one that closes after
+   * its promise, and a plain one. `plain: true` passes no buttons at all.
+   */
+  openGeneric({ title = "Confirm Request", text = "Do you want to add Amy Winstead as a friend?", plain = false } = {}) {
     this.clicks.length = 0;
     this.closes = 0;
+    const buttons = [
+      { label: "Stay Open", primary: true, onClick: () => (this.clicks.push("stay"), false) },
+      { label: "Later", onClick: () => new Promise((r) => setTimeout(() => (this.clicks.push("later"), r()), 50)) },
+      { label: "Cancel", onClick: () => this.clicks.push("cancel") },
+    ];
     this.handle = openDialog({
       title,
-      body: h("div", h("p", text), h("input.mfga-input#generic-input", { type: "text", placeholder: "Add a personal message..." })),
-      buttons: [
-        { label: "Stay Open", primary: true, onClick: () => (this.clicks.push("stay"), false) },
-        { label: "Cancel", onClick: () => this.clicks.push("cancel") },
-      ],
+      body: plain ? h("p", text) : h("div", h("p", text), h("input.mfga-input#generic-input", { type: "text", placeholder: "Add a personal message..." })),
+      buttons: plain ? undefined : buttons,
       onClose: () => this.closes++,
     });
   },

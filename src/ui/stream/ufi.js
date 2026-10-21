@@ -4,23 +4,14 @@ import { h, replaceChildren } from "../dom.js";
 import { icon } from "../icons.js";
 import { t } from "../../shared/i18n.js";
 import { health, uuid } from "../../shared/util.js";
-import { DEFAULTS } from "../../shared/settings.js";
+import { REACTIONS } from "../../data/actions.js";
 import { chronological, feedbackState, formatCount, isReacted, likeSentence, mergeComments } from "./format.js";
-import { avatar, guard, link, linkButton, nowMs, richText, sep } from "./parts.js";
+import { avatar, guard, link, linkButton, nowMs, richText, sep, settingsOf } from "./parts.js";
 import { timeNode } from "./time.js";
 import { whenVisibleFor } from "./visibility.js";
 
-// feedback_reaction_id values (src/data/actions.js REACTIONS.LIKE / REACTIONS.NONE).
-const LIKE = "1635855486666999";
-const UNREACT = "0";
 const PREVIEW_COUNT = 2;
 const PREVIEW_DELAY_MS = 1000;
-
-/** Reads the settings object whether ctx.settings is the plain object or the reactive store. */
-export function settingsOf(ctx) {
-  const s = typeof ctx?.settings?.get === "function" ? ctx.settings.get() : ctx?.settings;
-  return s || DEFAULTS;
-}
 
 /** Runs an action, turning exceptions and malformed results into {ok:false}. */
 async function attempt(fn) {
@@ -73,6 +64,7 @@ export function createFeedback(story, ctx) {
     posting: false,
     composing: false,
     expandOnLoad: false,
+    posted: 0,
   };
   const canComment = initial.canComment;
 
@@ -100,9 +92,10 @@ export function createFeedback(story, ctx) {
     return Math.max(state.total, state.comments.length);
   }
 
+  /** Expanded: everything loaded. Otherwise the newest two, plus the viewer's own new comments. */
   function shownComments() {
     const all = chronological(state.comments);
-    return state.expanded ? all : all.slice(-PREVIEW_COUNT);
+    return state.expanded ? all : all.slice(-(PREVIEW_COUNT + state.posted));
   }
 
   function render() {
@@ -118,21 +111,12 @@ export function createFeedback(story, ctx) {
     likeLink.setAttribute("aria-pressed", String(state.liked));
     const parts = likeSentence(state.count, state.liked);
     likes.hidden = !parts.length;
-    replaceChildren(
-      likes,
-      parts.length ? icon("ufi_like_big", { className: "mfga-ufi-ico" }) : null,
-      h(
-        "span.mfga-ufi-line",
-        parts.map((p) => (p.link ? link(story.url, { class: "mfga-ufi-likers" }, p.text) : p.text)),
-      ),
-    );
+    const line = parts.map((p) => (p.link ? link(story.url, { class: "mfga-ufi-likers" }, p.text) : p.text));
+    replaceChildren(likes, parts.length ? icon("ufi_like_big", { className: "mfga-ufi-ico" }) : null, h("span.mfga-ufi-line", line));
   }
 
   function renderComments() {
-    replaceChildren(
-      list,
-      shownComments().map((c) => renderComment(c, story, ctx)),
-    );
+    replaceChildren(list, shownComments().map((c) => renderComment(c, story, ctx)));
   }
 
   function renderViewAll() {
@@ -183,7 +167,7 @@ export function createFeedback(story, ctx) {
     state.liking = true;
     clearError();
     render();
-    const r = await attempt(() => ctx.actions.react(story, state.liked ? LIKE : UNREACT));
+    const r = await attempt(() => ctx.actions.react(story, state.liked ? REACTIONS.LIKE : REACTIONS.NONE));
     state.liking = false;
     if (!r.ok) {
       Object.assign(state, before);
@@ -193,7 +177,7 @@ export function createFeedback(story, ctx) {
       return;
     }
     if (Number.isFinite(r.reactions)) state.count = Math.max(0, r.reactions);
-    if ("viewerReaction" in r) state.liked = isReacted(r.viewerReaction);
+    if (r.viewerReaction !== undefined) state.liked = isReacted(r.viewerReaction);
     render();
     health.count("stream.like");
   }
@@ -256,13 +240,13 @@ export function createFeedback(story, ctx) {
       }),
     });
     const me = ctx.me || {};
-    const submit = h("button.mfga-ufi-submit", { type: "button", onclick: guard(postComment) }, t("ufi.submit"));
+    const submit = h("button.mfga-btn.mfga-btn-confirm.mfga-ufi-submit", { type: "button", onclick: guard(postComment) }, t("ufi.submit"));
     const item = h(
       "div.mfga-ufi-item.mfga-ufi-add",
       avatar(me.url, me.avatar, "mfga-ufi-pic mfga-ufi-me"),
       h("div.mfga-ufi-add-body", input, h("div.mfga-ufi-add-actions", submit)),
     );
-    return { item, input, submit };
+    return { item, input };
   }
 
   function onKey(ev) {
@@ -283,10 +267,13 @@ export function createFeedback(story, ctx) {
     add.input.focus();
   }
 
-  function localComment(text) {
+  /** The echoed comment, with whatever it lacks (author picture, time, ...) taken from ctx.me and now. */
+  function postedComment(echo, text) {
     const me = ctx.me || {};
-    const time = Math.floor(nowMs(ctx) / 1000);
-    return { id: `local:${uuid()}`, author: { name: me.name || "", url: me.url || null, avatar: me.avatar || null }, text, ranges: [], time, reactions: 0, replies: 0 };
+    const mine = { id: `local:${uuid()}`, author: { name: me.name || "", url: me.url || null, avatar: me.avatar || null }, text, ranges: [], time: Math.floor(nowMs(ctx) / 1000), reactions: 0, replies: 0 };
+    if (!echo || typeof echo !== "object") return mine;
+    const known = (o) => Object.fromEntries(Object.entries(o || {}).filter(([, v]) => v != null && v !== ""));
+    return { ...mine, ...known(echo), author: { ...mine.author, ...known(echo.author) } };
   }
 
   async function postComment() {
@@ -306,10 +293,9 @@ export function createFeedback(story, ctx) {
       health.count("stream.comment-failed");
       return;
     }
-    const echo = r.comment && typeof r.comment === "object" ? r.comment : localComment(text);
-    const posted = Number.isFinite(echo.time) ? echo : { ...echo, time: Math.floor(nowMs(ctx) / 1000) };
-    state.comments = mergeComments(state.comments, [posted]);
+    state.comments = mergeComments(state.comments, [postedComment(r.comment, text)]);
     state.total += 1;
+    state.posted += 1;
     add.input.value = "";
     autosize();
     render();

@@ -27,7 +27,7 @@ const stack = []; // open dialogs, top-most last
 let seq = 0;
 
 /** Visible, enabled Tab stops inside `root`, in DOM order (one per radio group, like the browser). */
-export function tabbables(root) {
+function tabbables(root) {
   return [...root.querySelectorAll(FOCUSABLE)].filter((el) => el.tabIndex >= 0 && el.getClientRects().length > 0 && isRadioTabStop(el, root));
 }
 
@@ -49,20 +49,6 @@ function isRadioTabStop(el, root) {
 export function openDialog({ title, body, buttons = [], width = 465, note = null, focus = null, onClose = null, className = null }) {
   const id = `mfga-dialog-${++seq}`;
   const opener = document.activeElement;
-  const footerButtons = (buttons.length ? buttons : [{ label: t("dialog.close") }]).map((b) => renderButton(b, () => handle));
-
-  const dialog = h(
-    "div.mfga-dialog",
-    { class: className, role: "dialog", "aria-modal": "true", "aria-labelledby": `${id}-title`, tabindex: "-1", style: { width } },
-    h(
-      "div.mfga-dialog-content",
-      h("h2.mfga-dialog-title", { id: `${id}-title` }, title),
-      h("div.mfga-dialog-body", body),
-      h("div.mfga-dialog-footer", note ? h("div.mfga-dialog-note", note) : null, footerButtons),
-    ),
-  );
-  const layer = h("div.mfga-ui.mfga-dialog-layer", { dataset: { mfgaDialog: id } }, dialog);
-
   let closed = false;
   const handle = {
     close() {
@@ -76,6 +62,19 @@ export function openDialog({ title, body, buttons = [], width = 465, note = null
     },
   };
   const isTop = () => stack[stack.length - 1] === handle;
+  const footerButtons = (buttons?.length ? buttons : [{ label: t("dialog.close") }]).map((b) => renderButton(b, handle));
+
+  const dialog = h(
+    "div.mfga-dialog",
+    { class: className, role: "dialog", "aria-modal": "true", "aria-labelledby": `${id}-title`, tabindex: "-1", style: { width } },
+    h(
+      "div.mfga-dialog-content",
+      h("h2.mfga-dialog-title", { id: `${id}-title` }, title),
+      h("div.mfga-dialog-body", body),
+      h("div.mfga-dialog-footer", note ? h("div.mfga-dialog-note", note) : null, footerButtons),
+    ),
+  );
+  const layer = h("div.mfga-ui.mfga-dialog-layer", { dataset: { mfgaDialog: id } }, dialog);
 
   function onKeyDown(ev) {
     // Our keystrokes are ours: Facebook's document-level shortcuts must not react to typing in the dialog.
@@ -102,21 +101,23 @@ export function openDialog({ title, body, buttons = [], width = 465, note = null
   layer.addEventListener("click", (ev) => {
     if (ev.target === layer && downOnLayer && isTop()) handle.close();
   });
-  for (const type of ["keydown", "keyup", "keypress"]) layer.addEventListener(type, type === "keydown" ? onKeyDown : stop);
+  layer.addEventListener("keydown", onKeyDown);
+  layer.addEventListener("keyup", stopPropagation);
+  layer.addEventListener("keypress", stopPropagation);
 
   stack.push(handle);
   document.body.appendChild(layer);
   document.addEventListener("focusin", onFocusIn, true);
   if (focus && dialog.contains(focus)) focus.focus({ preventScroll: true });
-  else focusFirst(dialog, footerButtons);
+  else focusFirst(dialog);
   return handle;
 }
 
-function stop(ev) {
+function stopPropagation(ev) {
   ev.stopPropagation();
 }
 
-function renderButton({ label, primary = false, onClick = null }, getHandle) {
+function renderButton({ label, primary = false, onClick = null }, handle) {
   return h(
     "button.mfga-btn",
     {
@@ -125,7 +126,6 @@ function renderButton({ label, primary = false, onClick = null }, getHandle) {
       onclick: safe(
         "dialog",
         () => {
-          const handle = getHandle();
           const result = onClick ? onClick({ close: handle.close }) : undefined;
           if (result && typeof result.then === "function") {
             return result.then((r) => {
@@ -142,10 +142,10 @@ function renderButton({ label, primary = false, onClick = null }, getHandle) {
   );
 }
 
-/** Focuses the first tabbable element of the body; else the last footer button (usually the safe "Cancel"). */
-function focusFirst(dialog, footerButtons = null) {
-  const body = dialog.querySelector(".mfga-dialog-body");
-  const target = tabbables(body)[0] || (footerButtons || tabbables(dialog)).at(-1) || dialog;
+/** Focuses the first Tab stop of the body; else the last footer button (usually the safe "Cancel"). */
+function focusFirst(dialog) {
+  const target =
+    tabbables(dialog.querySelector(".mfga-dialog-body"))[0] || tabbables(dialog.querySelector(".mfga-dialog-footer")).at(-1) || dialog;
   target.focus({ preventScroll: true });
 }
 

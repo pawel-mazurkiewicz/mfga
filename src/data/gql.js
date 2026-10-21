@@ -14,9 +14,11 @@ const ASBD_ID = "359341"; // x-asbd-id Facebook sends in 2026 (§2.3, MED)
 const GAP_SPREAD = 0.5; // gap = minGapMs × [1, 1.5)
 const COOLDOWN_BASE_MS = 60e3;
 const COOLDOWN_MAX_MS = 15 * 60e3;
+const REQUEST_TIMEOUT_MS = 45e3; // a stalled response must not hold the one-request queue forever
 
 /** §3.3 error codes. Anything unknown is "server". */
 const CODE_KINDS = new Map([
+  [1357001, "auth"], // "Not Logged In" of Facebook's async-response envelope
   [1357004, "auth"],
   [1357051, "token"],
   [1677047, "token"],
@@ -39,6 +41,8 @@ const WARNING_MARKERS = [
 ];
 // Unescaped key only: a post quoting it would arrive as \"is_checkpointed\":true.
 const CHECKPOINT_FLAG = /"is_checkpointed":true/;
+const CHECKPOINT_URL = /\/checkpoint\b/;
+const LOGIN_URL = /\/login\b/;
 
 export class GqlError extends Error {
   /** kind: "auth"|"token"|"stale-doc"|"variables"|"field"|"rate"|"soft-block"|"checkpoint"|"network"|"server" */
@@ -124,7 +128,28 @@ function documentVisibility() {
 const hasWarning = (s) => typeof s === "string" && WARNING_MARKERS.some((re) => re.test(s));
 
 /**
+ * Session-level failures come in Facebook's async-response envelope instead of GraphQL, behind the
+ * for (;;); guard: {"__ar":1,"error":1357004,"errorSummary":"…","errorDescription":"…","payload":null}.
+ */
+function envelopeErrors(lines) {
+  return lines
+    .filter((line) => line?.error != null && !("data" in line) && !("errors" in line))
+    .map((line) => ({ code: Number(line.error) || null, message: line.errorSummary, summary: line.errorSummary, description: line.errorDescription }));
+}
+
+/** Rejects with a network GqlError when `promise` has not settled after `ms`; a late result is ignored. */
+function withTimeout(promise, ms) {
+  let timer;
+  const expired = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new GqlError(`no response after ${ms} ms`, { kind: "network" })), ms);
+  });
+  return Promise.race([promise, expired]).finally(() => clearTimeout(timer));
+}
+
+/**
  * createGqlClient({ platform, harvest, minGapMs, onHalt }) -> { request, halted, stats }
+ * stopOnCheckpoint (settings.advanced.stopOnCheckpoint): false = a checkpoint fails only that request.
+ * timeoutMs: a request without a complete response by then fails as "network" and frees the queue.
  * Test/wiring hooks: codec, now, sleep, random, visibility {hidden(), wait()}, refreshTokens().
  */
 export function createGqlClient({
@@ -132,6 +157,8 @@ export function createGqlClient({
   harvest,
   minGapMs = 1500,
   onHalt,
+  stopOnCheckpoint = true,
+  timeoutMs = REQUEST_TIMEOUT_MS,
   codec = DEFAULT_CODEC,
   now = () => Date.now(),
   sleep = realSleep,
@@ -194,7 +221,7 @@ export function createGqlClient({
 
   async function ensureUsable() {
     if (haltReason) throw new GqlError(`requests halted (${haltReason})`, { kind: "checkpoint" });
-    if (harvest.checkpointed) halt("checkpoint-flag");
+    if (harvest.checkpointed && stopOnCheckpoint) halt("checkpoint-flag");
     if (now() < cooldownUntil) throw new GqlError("cooling down after a rate limit", { kind: "rate" });
     const { userId, dtsg } = harvest.tokens;
     if (!userId || userId === "0") throw new GqlError("not logged in", { kind: "auth" });
@@ -241,7 +268,7 @@ export function createGqlClient({
     health.count("gql.requests");
     inFlight = true;
     try {
-      const text = await fetchText(body, headers);
+      const text = await withTimeout(fetchText(body, headers), timeoutMs);
       const result = parse(text);
       counts.ok++;
       strikes = 0;
@@ -262,9 +289,7 @@ export function createGqlClient({
     } catch (err) {
       throw new GqlError(`network: ${err?.message || err}`, { kind: "network" });
     }
-    const url = String(res.url || "");
-    if (/\/checkpoint\b/.test(url)) halt("checkpoint-redirect");
-    if (/\/login\b/.test(url)) throw new GqlError("redirected to login", { kind: "auth" });
+    checkRedirect(res.url);
     if (res.status === 429) throw new GqlError("HTTP 429", { kind: "rate" });
     if (res.status === 401 || res.status === 403) throw new GqlError(`HTTP ${res.status}`, { kind: "auth" });
     if (!res.ok) throw new GqlError(`HTTP ${res.status}`, { kind: "server" });
@@ -275,6 +300,13 @@ export function createGqlClient({
     }
   }
 
+  /** An HTTP redirect target, or the envelope's {"redirect": "..."}. */
+  function checkRedirect(target) {
+    const url = String(target || "");
+    if (CHECKPOINT_URL.test(url)) halt("checkpoint-redirect");
+    if (LOGIN_URL.test(url)) throw new GqlError("redirected to login", { kind: "auth" });
+  }
+
   function parse(text) {
     if (CHECKPOINT_FLAG.test(text)) halt("checkpoint-flag");
     const lines = codec.parseLines(text);
@@ -282,7 +314,10 @@ export function createGqlClient({
       if (hasWarning(text)) halt("account-warning");
       throw new GqlError("empty or unparseable response", { kind: "soft-block" });
     }
-    const { data, errors } = decodePayloads(lines, harvest.env?.typenamePairs, codec);
+    for (const line of lines) if (typeof line?.redirect === "string") checkRedirect(line.redirect);
+    const decoded = decodePayloads(lines, harvest.env?.typenamePairs, codec);
+    const data = decoded.data;
+    const errors = [...decoded.errors, ...envelopeErrors(lines)];
     for (const e of errors) if (hasWarning(e?.message) || hasWarning(e?.summary) || hasWarning(e?.description)) halt("account-warning");
     const critical = errors.find((e) => e?.severity !== "WARNING" && errorKind(e?.code) !== "server");
     const failure = critical ?? (data == null ? errors[0] : null);
@@ -295,10 +330,10 @@ export function createGqlClient({
     return { data, errors, lines };
   }
 
-  /** Stops every future request for this page and tells the app why. Always throws. */
+  /** Stops every future request for this page (unless disabled) and tells the app why. Always throws. */
   function halt(reason) {
     if (!haltReason) {
-      haltReason = reason;
+      if (stopOnCheckpoint) haltReason = reason;
       health.count("gql.halt");
       health.fact("gql.haltReason", reason);
       try {

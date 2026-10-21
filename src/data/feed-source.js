@@ -5,7 +5,7 @@
 import { health } from "../shared/util.js";
 import { createClassifier } from "./classify.js";
 import { extractStory } from "./extract.js";
-import { DEFAULT_CODEC, GqlError, decodePayloads } from "./gql.js";
+import { DEFAULT_CODEC, GqlError, decodePayloads, errorKind } from "./gql.js";
 import { runOp } from "./ops.js";
 
 export const FEED_QUERY = "CometModernHomeFeedQuery";
@@ -53,12 +53,15 @@ export function createFeedSource({
   if (!feedStyle) throw new Error(`unknown feed source "${name}"`);
   const orderby = name === "top" ? ["TOP_STORIES"] : ["MOST_RECENT"];
   let cursor, seenCursors, ssrPending, emptyPages;
+  let generation = 0;
+  let queue = Promise.resolve();
 
   const source = { name, done: false, next, reset };
   reset();
   return source;
 
   function reset() {
+    generation++;
     cursor = null;
     seenCursors = new Set();
     ssrPending = true;
@@ -66,26 +69,39 @@ export function createFeedSource({
     source.done = false;
   }
 
-  async function next() {
+  /** One page at a time: overlapping calls would replay the same cursor and end the feed as "not advancing". */
+  function next() {
+    const run = queue.then(readPage);
+    queue = run.catch(() => {});
+    return run;
+  }
+
+  async function readPage() {
     if (source.done) return { stories: [], dropped: {} };
+    const gen = generation;
     await harvest.ready;
     const ssr = ssrPending ? ssrConnection() : null;
     ssrPending = false;
     const connection = ssr ?? (await fetchConnection());
     const page = await readEdges(connection.edges);
-    advance(connection, !!ssr);
+    if (gen === generation) advance(connection, !!ssr); // a reset() meanwhile starts over; keep its state
     return page;
   }
 
-  /** The SSR-streamed first page, when the page's own preloader was for this feedStyle. */
+  /** The SSR-streamed first page, when the page's own preloader was for this connection (feedStyle + orderby). */
   function ssrConnection() {
     const preloader = harvest.preloaders?.get(FEED_QUERY);
-    if (preloader?.variables?.feedStyle !== feedStyle) return null;
+    if (preloader?.variables?.feedStyle !== feedStyle || !sameOrder(preloader.variables.orderby)) return null;
     const payloads = harvest.prefetched?.get(preloader.preloaderID);
     if (!payloads?.length) return null;
     const connection = decodePayloads(payloads, harvest.env?.typenamePairs, codec).data?.viewer?.news_feed;
     if (connection) health.count("feed.ssrPage");
     return connection ?? null;
+  }
+
+  /** Each orderby is its own connection with its own cursors (e.g. legacy ?sk=favorites preloads orderby []). */
+  function sameOrder(preloaded) {
+    return preloaded == null || JSON.stringify(preloaded) === JSON.stringify(orderby);
   }
 
   async function fetchConnection() {
@@ -94,8 +110,14 @@ export function createFeedSource({
       return feedVariables(op.variables, { feedStyle, orderby, cursor, scale });
     });
     if (!res) throw new GqlError(`no doc_id for ${FEED_QUERY}`, { kind: "stale-doc" });
+    const connection = res.data?.viewer?.news_feed;
+    if (connection == null || typeof connection !== "object") {
+      // A field error nulled the connection: that is a failed page, not the end of the feed.
+      const first = res.errors?.[0];
+      throw new GqlError(String(first?.message || "response without news_feed"), { code: first?.code ?? null, kind: errorKind(first?.code) });
+    }
     health.count("feed.pages");
-    return res.data?.viewer?.news_feed ?? {};
+    return connection;
   }
 
   async function readEdges(edges) {
@@ -112,7 +134,7 @@ export function createFeedSource({
         drop(verdict?.reason || "unknown");
         continue;
       }
-      const story = extract(edge.node, { sources: [name] });
+      const story = extract(edge.node, { sources: [name], dedupKey: edge.deduplication_key });
       if (story) stories.push(story);
       else drop("unparsed");
     }

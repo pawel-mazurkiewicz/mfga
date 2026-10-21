@@ -31,7 +31,7 @@ export function whenVisibleFor(el, ms, cb) {
   return () => unwatch(el);
 }
 
-export function unwatch(el) {
+function unwatch(el) {
   const w = watched.get(el);
   if (!w) return;
   clearTimeout(w.timer);

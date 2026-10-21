@@ -3,6 +3,9 @@
 // sequence_number first). Pure: inputs are never mutated.
 
 const GUARD = "for (;;);";
+// JSON.parse turns "__proto__" into an ordinary key; assigning it on a merge target would swap that
+// object's prototype (Object.prototype itself at the root), so it is never merged or walked.
+const PROTO = "__proto__";
 
 const isPlainObject = (v) => v != null && typeof v === "object" && !Array.isArray(v);
 
@@ -27,6 +30,7 @@ export function parseLines(text) {
 export function deepMerge(a, b) {
   if (!isPlainObject(a) || !isPlainObject(b)) return b;
   for (const [key, value] of Object.entries(b)) {
+    if (key === PROTO) continue;
     a[key] = isPlainObject(value) && isPlainObject(a[key]) ? deepMerge(a[key], value) : value;
   }
   return a;
@@ -61,6 +65,7 @@ export function stitch(payloads) {
 }
 
 function applyIncremental(root, path, label, payload) {
+  if (path.includes(PROTO)) return;
   if (!path.length) {
     deepMerge(root, payload);
     return;
@@ -72,14 +77,12 @@ function applyIncremental(root, path, label, payload) {
   else deepMerge(parent[last], payload);
 }
 
-/** Walks (and creates) containers along `path`; a numeric next key makes a list. */
+/** Walks along `path`, creating missing containers (a numeric next key makes a list); existing ones are kept. */
 function ensurePath(root, path, finalKey) {
   let node = root;
   path.forEach((key, i) => {
     const nextKey = i + 1 < path.length ? path[i + 1] : finalKey;
-    const wantList = typeof nextKey === "number";
-    const current = node[key];
-    if (current == null || typeof current !== "object" || Array.isArray(current) !== wantList) node[key] = wantList ? [] : {};
+    if (node[key] == null || typeof node[key] !== "object") node[key] = typeof nextKey === "number" ? [] : {};
     node = node[key];
   });
   return node;

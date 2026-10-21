@@ -1,0 +1,153 @@
+{
+  "data": {
+    "node": {
+      "__typename": "Feedback",
+      "id": "ZmVlZGJhY2s6OTEwMDAwMDAwMQ==",
+      "comment_rendering_instance_for_feed_location": {
+        "comments": {
+          "edges": [
+            {
+              "node": {
+                "id": "Y29tbWVudDo2NjAwMDAwMDAx",
+                "legacy_fbid": "6600000001",
+                "depth": 0,
+                "body": {
+                  "delight_ranges": [],
+                  "image_ranges": [],
+                  "inline_style_ranges": [],
+                  "aggregated_ranges": [],
+                  "ranges": [],
+                  "color_ranges": [],
+                  "text": "Looks amazing! 😍"
+                },
+                "author": {
+                  "__typename": "User",
+                  "id": "100010000000102",
+                  "name": "Bob Example",
+                  "__isActor": "User",
+                  "profile_picture_depth_0": {
+                    "uri": "https://scontent.xx.fbcdn.net/v/t39.30808-6/cp100010000000102_n.jpg?stp=dst-jpg_s32x32&_nc_cat=1&oh=00_fxcp100010000000102&oe=6A1B2C3D"
+                  },
+                  "profile_picture_depth_0_increased": {
+                    "uri": "https://scontent.xx.fbcdn.net/v/t39.30808-6/cpi100010000000102_n.jpg?stp=dst-jpg_s40x40&_nc_cat=1&oh=00_fxcpi100010000000102&oe=6A1B2C3D"
+                  },
+                  "__isEntity": "User",
+                  "url": "https://www.facebook.com/bob.example"
+                },
+                "feedback": {
+                  "id": "ZmVlZGJhY2s6NjYwMDAwMDAwMQ==",
+                  "replies_fields": {
+                    "count": 1,
+                    "total_count": 1
+                  },
+                  "reactors": {
+                    "count_reduced": "2"
+                  }
+                },
+                "comment_action_links": [
+                  {
+                    "__typename": "XFBCommentThumbsUpReactionActionLink",
+                    "comment": {
+                      "id": "Y29tbWVudDo2NjAwMDAwMDAx",
+                      "feedback": {
+                        "id": "ZmVlZGJhY2s6NjYwMDAwMDAwMQ==",
+                        "viewer_feedback_reaction_info": null,
+                        "reactors": {
+                          "count": 2,
+                          "is_empty": false
+                        }
+                      }
+                    }
+                  }
+                ],
+                "created_time": 1792541100,
+                "__typename": "Comment"
+              },
+              "cursor": "fxc0"
+            },
+            {
+              "node": {
+                "id": "Y29tbWVudDo2NjAwMDAwMDAy",
+                "legacy_fbid": "6600000002",
+                "depth": 0,
+                "body": {
+                  "delight_ranges": [],
+                  "image_ranges": [],
+                  "inline_style_ranges": [],
+                  "aggregated_ranges": [],
+                  "ranges": [
+                    {
+                      "entity": {
+                        "__typename": "User",
+                        "__isEntity": "User",
+                        "id": "100010000000101",
+                        "url": "https://www.facebook.com/alice.kowalska",
+                        "profile_url": "https://www.facebook.com/alice.kowalska",
+                        "__isNode": "User"
+                      },
+                      "entity_is_weak_reference": false,
+                      "length": 14,
+                      "offset": 10
+                    }
+                  ],
+                  "color_ranges": [],
+                  "text": "Say hi to Alice Kowalska from me"
+                },
+                "author": {
+                  "__typename": "User",
+                  "id": "100010000000103",
+                  "name": "Carol Nowak",
+                  "__isActor": "User",
+                  "profile_picture_depth_0": {
+                    "uri": "https://scontent.xx.fbcdn.net/v/t39.30808-6/cp100010000000103_n.jpg?stp=dst-jpg_s32x32&_nc_cat=1&oh=00_fxcp100010000000103&oe=6A1B2C3D"
+                  },
+                  "profile_picture_depth_0_increased": {
+                    "uri": "https://scontent.xx.fbcdn.net/v/t39.30808-6/cpi100010000000103_n.jpg?stp=dst-jpg_s40x40&_nc_cat=1&oh=00_fxcpi100010000000103&oe=6A1B2C3D"
+                  },
+                  "__isEntity": "User",
+                  "url": "https://www.facebook.com/carol.nowak"
+                },
+                "feedback": {
+                  "id": "ZmVlZGJhY2s6NjYwMDAwMDAwMg==",
+                  "replies_fields": {
+                    "count": 0,
+                    "total_count": 0
+                  },
+                  "reactors": {
+                    "count_reduced": "0"
+                  }
+                },
+                "comment_action_links": [
+                  {
+                    "__typename": "XFBCommentThumbsUpReactionActionLink",
+                    "comment": {
+                      "id": "Y29tbWVudDo2NjAwMDAwMDAy",
+                      "feedback": {
+                        "id": "ZmVlZGJhY2s6NjYwMDAwMDAwMg==",
+                        "viewer_feedback_reaction_info": null,
+                        "reactors": {
+                          "count": 0,
+                          "is_empty": true
+                        }
+                      }
+                    }
+                  }
+                ],
+                "created_time": 1792541400,
+                "__typename": "Comment"
+              },
+              "cursor": "fxc1"
+            }
+          ],
+          "page_info": {
+            "end_cursor": "fxcomments-end",
+            "has_next_page": false
+          }
+        }
+      }
+    }
+  },
+  "extensions": {
+    "is_final": true
+  }
+}

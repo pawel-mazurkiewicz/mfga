@@ -116,8 +116,8 @@ const mediaUrl = (url) => httpUrl(url, FB_ORIGIN)?.href ?? null;
  * Normalizes a Story node. opts.sources: feeds it came from; opts.dedupKey: edge.deduplication_key,
  * used as the key when the node has neither post_id nor id. Returns null for anything without identity.
  */
-export function extractStory(node, opts = {}) {
-  return storyFrom(node, opts, 0);
+export function extractStory(node, opts) {
+  return storyFrom(node, opts ?? {}, 0);
 }
 
 function storyFrom(node, opts, depth) {
@@ -196,11 +196,13 @@ function timestamps(v) {
 }
 
 function extractTime(v) {
-  return pick(num(v.node.creation_time), ...timestamps(v).map((s) => num(s.creation_time)), num(v.content.creation_time)) ?? num(findKey(v.node, "creation_time"));
+  const canonical = [v.node.creation_time, ...timestamps(v).map((s) => s.creation_time), v.content.creation_time];
+  return pick(...canonical.map(num)) ?? num(findKey(v.node, "creation_time"));
 }
 
 function extractUrl(v) {
-  const candidates = [...timestamps(v).map((s) => s.url), v.node.permalink_url, v.ufi.permalink_url, v.ftwc.url, v.node.wwwURL, v.content.wwwURL, v.node.url, v.ufi.url];
+  const { node, ufi } = v;
+  const candidates = [...timestamps(v).map((s) => s.url), node.permalink_url, ufi.permalink_url, v.ftwc.url, node.wwwURL, v.content.wwwURL, node.url, ufi.url];
   return cleanPermalink(pick(...candidates.map(str)) ?? str(findKey(v.node, "permalink_url")));
 }
 
@@ -257,9 +259,13 @@ function pictureSize(p) {
 }
 
 function extractTarget(v, actors) {
-  const candidates = [v.node.to, v.content.to, ...v.sections.map((s) => s.title?.story?.to), ...v.actorPhotos.map((s) => s.to), ...v.metadata.map((m) => m.story?.to)].filter(
-    (t) => isObj(t) && idString(t.id),
-  );
+  const candidates = [
+    v.node.to,
+    v.content.to,
+    ...v.sections.map((s) => s.title?.story?.to),
+    ...v.actorPhotos.map((s) => s.to),
+    ...v.metadata.map((m) => m.story?.to),
+  ].filter((t) => isObj(t) && idString(t.id));
   if (candidates.length) {
     const id = idString(candidates[0].id);
     const same = candidates.filter((t) => idString(t.id) === id);
@@ -332,7 +338,10 @@ function normRanges(ranges, text) {
     if (offset == null || !length || offset + length > text.length) continue;
     const entity = obj(r.entity);
     const kind = RANGE_KINDS[entity.__typename] ?? (isObj(entity.web_link) || str(entity.external_url) ? "link" : "other");
-    const raw = kind === "link" ? unwrapLinkShim(pick(str(entity.web_link?.url), str(entity.external_url), str(entity.url))) : pick(str(entity.url), str(entity.profile_url));
+    const raw =
+      kind === "link"
+        ? unwrapLinkShim(pick(str(entity.web_link?.url), str(entity.external_url), str(entity.url)))
+        : pick(str(entity.url), str(entity.profile_url));
     const url = cleanPermalink(raw);
     if (url) out.push({ offset, length, url, kind });
   }
@@ -381,9 +390,10 @@ function extractFeedback(v) {
     .map((e) => ({ id: idString(e.node?.id), count: int(e.reaction_count) ?? 0 }))
     .filter((r) => r.id);
   const isFeedback = (o) => o.__typename === "Feedback" && Boolean(str(o.id));
+  const topTotal = topReactions.length ? topReactions.reduce((n, r) => n + r.count, 0) : null;
   return {
     id: str(v.node.feedback?.id) ?? str(ftwc.id) ?? str(summary.id) ?? str(v.content.feedback?.id) ?? str(findInStory(v.node, isFeedback)?.id),
-    reactions: pick(count(summary.reaction_count), count(react.reaction_count), topReactions.length ? topReactions.reduce((n, r) => n + r.count, 0) : null, int(summary.i18n_reaction_count)),
+    reactions: pick(count(summary.reaction_count), count(react.reaction_count), topTotal, int(summary.i18n_reaction_count)),
     comments: pick(commentTotal(ftwc), commentTotal(summary.comments_count_summary_renderer?.feedback), commentTotal(comment)),
     shares: pick(count(summary.share_count), count(share.share_count), int(summary.i18n_share_count)),
     viewerReaction: idString(pick(summary.viewer_feedback_reaction_info, react.viewer_feedback_reaction_info)?.id),
@@ -411,13 +421,16 @@ function collectAttachments(raws) {
   return out;
 }
 
+/** Identities of one raw attachment: any shared identity marks a duplicate copy. */
 function attachmentIds(raw, a) {
   const sa = obj(raw.styles?.attachment);
+  const mediaId = idString(pick(sa.media?.id, raw.media?.id));
+  const targetId = idString(pick(sa.target?.id, raw.target?.id));
   const primary = a.url ?? a.href ?? a.items?.[0]?.uri ?? a.hd ?? a.sd;
   return [
     str(raw.deduplication_key) && `d:${raw.deduplication_key}`,
-    idString(pick(sa.media?.id, raw.media?.id)) && `m:${idString(pick(sa.media?.id, raw.media?.id))}`,
-    idString(pick(sa.target?.id, raw.target?.id)) && `t:${idString(pick(sa.target?.id, raw.target?.id))}`,
+    mediaId && `m:${mediaId}`,
+    targetId && `t:${targetId}`,
     primary && `u:${primary}`,
     a.kind === "unavailable" && "unavailable",
   ].filter(Boolean);
@@ -440,7 +453,7 @@ function normalizeAttachment(att) {
   if (reel) return videoAttachment(reel.media, sa, att);
   if (media.__typename === "Video" || /Video|AnimatedImage/.test(style)) return videoAttachment(media, sa, att);
   if (media.__typename === "Photo" || /Photo/.test(style)) {
-    const item = photoItem(media, pick(str(media.url), str(sa.url), str(att.url)));
+    const item = photoItem(media, pick(str(sa.url), str(att.url)));
     if (item) return { kind: "photo", items: [item], total: 1 };
   }
   if (hasLinkSignal(sa, att, target, footer)) return link();
@@ -448,6 +461,7 @@ function normalizeAttachment(att) {
   return href ? { kind: "other", href } : null;
 }
 
+/** The feed-size image of a photo (photo_image / image before the large viewer_image); href: its page. */
 function photoItem(media, href) {
   const image = [media.photo_image, media.image, media.viewer_image].find((i) => isObj(i) && mediaUrl(i.uri));
   if (!image) return null;
@@ -455,7 +469,7 @@ function photoItem(media, href) {
     uri: mediaUrl(image.uri),
     width: int(image.width),
     height: int(image.height),
-    href: cleanPermalink(pick(href, str(media.url))),
+    href: cleanPermalink(pick(str(media.url), href)),
     alt: str(media.accessibility_caption),
   };
 }
@@ -474,11 +488,14 @@ function videoAttachment(media, sa, att) {
   const progressive = objects(delivery.progressive_urls).filter((p) => p.failure_reason == null && mediaUrl(p.progressive_url));
   const quality = (q) => progressive.find((p) => p.metadata?.quality === q)?.progressive_url;
   const legacy = obj(media.videoDeliveryLegacyFields);
-  const sd = pick(quality("SD"), str(media.playable_url), str(media.browser_native_sd_url), str(legacy.playable_url), str(legacy.browser_native_sd_url), progressive[0]?.progressive_url);
-  const hd = pick(quality("HD"), str(media.playable_url_quality_hd), str(media.browser_native_hd_url), str(legacy.playable_url_quality_hd), str(legacy.browser_native_hd_url));
+  // 2026 delivery first, then the legacy fields (on the video itself or under videoDeliveryLegacyFields).
+  const legacyUrl = (...keys) => pick(...keys.flatMap((k) => [str(media[k]), str(legacy[k])]));
+  const sd = pick(quality("SD"), legacyUrl("playable_url", "browser_native_sd_url"), progressive[0]?.progressive_url);
+  const hd = pick(quality("HD"), legacyUrl("playable_url_quality_hd", "browser_native_hd_url"));
+  const poster = pick(str(media.preferred_thumbnail?.image?.uri), str(media.first_frame_thumbnail), str(media.thumbnailImage?.uri), str(media.image?.uri));
   return {
     kind: "video",
-    poster: mediaUrl(pick(str(media.preferred_thumbnail?.image?.uri), str(media.first_frame_thumbnail), str(media.thumbnailImage?.uri), str(media.image?.uri))),
+    poster: mediaUrl(poster),
     sd: mediaUrl(sd),
     hd: mediaUrl(hd),
     width: pick(int(media.width), int(media.original_width)),
@@ -542,6 +559,8 @@ function eventAttachment(sa, target) {
 // ---------------------------------------------------------------------------------------------
 // Comments
 
+const COMMENT_AVATARS = ["profile_picture_depth_0", "profile_picture", "profile_picture_depth_0_increased", "profile_picture_depth_1"];
+
 /** Comment node (CommentsListComponentsPaginationQuery, interesting_top_level_comments) -> Comment. */
 export function extractComment(node) {
   if (!isObj(node)) return null;
@@ -557,7 +576,7 @@ export function extractComment(node) {
       id: idString(author.id),
       name: str(author.name),
       url: cleanPermalink(pick(str(author.url), str(author.profile_url))),
-      avatar: mediaUrl(pick(...["profile_picture_depth_0", "profile_picture", "profile_picture_depth_0_increased", "profile_picture_depth_1"].map((k) => str(author[k]?.uri)))),
+      avatar: mediaUrl(pick(...COMMENT_AVATARS.map((k) => str(author[k]?.uri)))),
     },
     text,
     ranges: text ? normRanges(body.ranges, text) : [],
@@ -569,7 +588,7 @@ export function extractComment(node) {
 
 function commentReactions(node, feedback) {
   const linked = objects(node.comment_action_links).map((l) => obj(l.comment?.feedback));
-  const counts = [feedback, ...linked].flatMap((f) => [int(f.reactors?.count), int(f.unified_reactors?.count), int(f.reaction_count?.count), int(f.reaction_count)]);
+  const counts = [feedback, ...linked].flatMap((f) => [f.reactors?.count, f.unified_reactors?.count, f.reaction_count?.count, f.reaction_count].map(int));
   const top = objects(feedback.top_reactions?.edges).map((e) => int(e.reaction_count) ?? 0);
   return pick(...counts, top.length ? top.reduce((a, b) => a + b, 0) : null, int(feedback.reactors?.count_reduced)) ?? 0;
 }

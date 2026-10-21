@@ -7,16 +7,15 @@ import { t } from "../../shared/i18n.js";
 import { health, safe } from "../../shared/util.js";
 import { DEFAULTS } from "../../shared/settings.js";
 import { countNewer, enabledSources, formatCount, hiddenSentence } from "./format.js";
-import { guard, linkButton, nowMs, routeClicks } from "./parts.js";
+import { guard, linkButton, nowMs, routeClicks, settingsOf } from "./parts.js";
 import { renderStory } from "./story.js";
 import { refreshTimes } from "./time.js";
-import { settingsOf } from "./ufi.js";
 import { unwatchWithin } from "./visibility.js";
 import { renderWelcome } from "./welcome.js";
 
 const MODES = ["top", "recent"];
 const TIME_REFRESH_MS = 60_000;
-const AUTOLOAD_MARGIN = "0px 0px 600px 0px";
+const AUTOLOAD_PX = 600;
 
 const renderOne = safe("stream.story", renderStory, { disableOnError: false });
 
@@ -36,7 +35,6 @@ export function createFeedView(ctx) {
     error: null,
     keys: new Set(),
     stories: [],
-    sentinelVisible: false,
   };
 
   const modes = h("div.mfga-feed-modes");
@@ -62,11 +60,14 @@ export function createFeedView(ctx) {
   routeClicks(el, ctx);
 
   const timer = setInterval(guard(() => refreshTimes(el, nowMs(ctx))), TIME_REFRESH_MS);
-  const sentinel = feedSettings().autoLoad && typeof IntersectionObserver === "function" ? new IntersectionObserver(onSentinel, { rootMargin: AUTOLOAD_MARGIN }) : null;
+  const sentinel =
+    feedSettings().autoLoad && typeof IntersectionObserver === "function"
+      ? new IntersectionObserver(onSentinel, { rootMargin: `0px 0px ${AUTOLOAD_PX}px 0px` })
+      : null;
   sentinel?.observe(footer);
 
   renderModes();
-  reload();
+  guard(reload)();
   return { el, reload, destroy };
 
   function welcomeBox() {
@@ -86,7 +87,7 @@ export function createFeedView(ctx) {
       parts[0],
       h("span.mfga-feed-dot", " · "),
       parts[1],
-      fresh ? h("span.mfga-feed-pill", { title: t("feed.newPosts", { n: fresh }) }, formatCount(fresh)) : null,
+      fresh ? h("span.mfga-pill.mfga-feed-pill", { title: t("feed.newPosts", { n: fresh }) }, formatCount(fresh)) : null,
     );
   }
 
@@ -141,7 +142,7 @@ export function createFeedView(ctx) {
     renderFooter();
     renderStatus();
     health.count("stream.page");
-    if (sentinel && view.sentinelVisible && !feed.exhausted) setTimeout(() => loadMore({ auto: true }), 0);
+    if (sentinel && !feed.exhausted) requestAnimationFrame(guard(() => nearEnd() && loadMore({ auto: true })));
   }
 
   function appendStories(stories) {
@@ -163,15 +164,19 @@ export function createFeedView(ctx) {
 
   function renderFooter() {
     const feed = view.feed;
-    footer.className = "mfga-feed-footer";
     if (view.loading) {
-      footer.classList.add("mfga-feed-busy");
-      return replaceChildren(footer, h("div.mfga-feed-more.mfga-loading", { role: "progressbar", "aria-label": t("feed.loading") }, h("span.mfga-feed-spinner")));
+      return replaceChildren(footer, h("div.mfga-feed-more.mfga-loading", { role: "progressbar", "aria-label": t("feed.loading") }, h("span.mfga-spinner")));
     }
     if (view.error) {
       return replaceChildren(
         footer,
-        h("div.mfga-feed-error", { role: "alert" }, h("span", t("feed.error")), " ", h("button.mfga-feed-retry", { type: "button", onclick: guard(() => (view.feed ? loadMore() : reload())) }, t("feed.retry"))),
+        h(
+          "div.mfga-error.mfga-feed-error",
+          { role: "alert" },
+          h("span", t("feed.error")),
+          " ",
+          h("button.mfga-btn.mfga-feed-retry", { type: "button", onclick: guard(() => (view.feed ? loadMore() : reload())) }, t("feed.retry")),
+        ),
       );
     }
     if (!feed || !feed.exhausted) {
@@ -189,9 +194,13 @@ export function createFeedView(ctx) {
     status.textContent = sentence;
   }
 
+  /** Auto-load: the end of the stream is within AUTOLOAD_PX of the viewport (measured after layout). */
+  function nearEnd() {
+    return footer.isConnected && footer.getBoundingClientRect().top < innerHeight + AUTOLOAD_PX;
+  }
+
   function onSentinel(entries) {
-    view.sentinelVisible = entries.some((e) => e.isIntersecting);
-    if (view.sentinelVisible) guard(loadMore)({ auto: true });
+    if (entries.some((e) => e.isIntersecting)) guard(loadMore)({ auto: true });
   }
 
   function destroy() {

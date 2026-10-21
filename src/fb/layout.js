@@ -9,7 +9,6 @@ import { effectiveMode } from "./routes.js";
 
 export const HOST_ID = "mfga-shell";
 const VARS_ID = "mfga-layout-vars";
-const MARKS = ["data-mfga-main", "data-mfga-pass", "data-mfga-chrome"];
 const ENSURE_MS = 1000;
 
 const hasColumns = (mode) => mode === "home" || mode === "groups-feed";
@@ -33,7 +32,7 @@ function placeHost(host, doc) {
     if (host.nextSibling !== root) root.parentNode.insertBefore(host, root);
   } else if (doc.body && host.parentNode !== doc.body) {
     doc.body.prepend(host);
-  } else if (!host.parentNode) {
+  } else if (!host.parentNode && doc.documentElement) {
     doc.documentElement.appendChild(host);
   }
 }
@@ -61,19 +60,25 @@ export function pushViewOpen(doc = document) {
   return !!root && [...root.querySelectorAll('[role="dialog"]')].some((d) => !d.closest('[role="banner"]'));
 }
 
+/** Facebook's top banner (not a push view's, never ours). */
+export function findBanner(doc = document) {
+  return [...doc.querySelectorAll('[role="banner"]')].find((b) => !b.closest(`[role="dialog"], #${HOST_ID}`)) || null;
+}
+
 /**
- * Facebook's wrappers around [role=main] (the "chain") become transparent and click-through so the shell
- * columns underneath show and work; the sibling branches holding the left/right rails get hidden.
- * Returns {chain, rails}.
+ * Facebook's root wrappers paint above the shell (they form their own z-index:0 stacking context after it),
+ * so the ancestors of [role=main] — or of the banner on pages without one — (the "chain") are made
+ * click-through on every shell route and transparent on the column routes. The sibling branches that hold
+ * the left/right rails are hidden on the column routes. Returns {chain, rails}.
  */
-export function columnMarks(main, doc = document) {
+export function passThroughMarks(anchor, doc = document) {
   const chain = [];
-  for (let el = main.parentElement; el && el !== doc.body && el !== doc.documentElement; el = el.parentElement) chain.push(el);
+  for (let el = anchor.parentElement; el && el !== doc.body && el !== doc.documentElement; el = el.parentElement) chain.push(el);
   const inChain = new Set(chain);
   const rails = [];
   for (const el of chain) {
     for (const child of el.children) {
-      if (child === main || inChain.has(child) || child.id === HOST_ID) continue;
+      if (child === anchor || inChain.has(child) || child.id === HOST_ID) continue;
       const isRail = child.matches('[role="navigation"], [role="complementary"]') || child.querySelector('[role="navigation"], [role="complementary"]');
       const isLayer = child.matches('[role="banner"], [role="dialog"]') || child.querySelector('[role="banner"], [role="dialog"]');
       if (isRail && !isLayer) rails.push(child);
@@ -112,13 +117,17 @@ export function createLayout({ settings } = {}) {
     marked = next;
   };
 
-  const markColumns = () => {
-    main = hasColumns(mode) ? findMain(doc) : null;
-    if (!main) return setMarks(new Map());
-    const { chain, rails } = columnMarks(main, doc);
-    const next = new Map([[main, "data-mfga-main"]]);
-    for (const el of chain) next.set(el, "data-mfga-pass");
-    for (const el of rails) next.set(el, "data-mfga-chrome");
+  const markPage = () => {
+    const found = findMain(doc);
+    main = hasColumns(mode) ? found : null;
+    const anchor = found || findBanner(doc);
+    if (!anchor) return setMarks(new Map());
+    const { chain, rails } = passThroughMarks(anchor, doc);
+    const next = new Map(chain.map((el) => [el, "data-mfga-pass"]));
+    if (main) {
+      next.set(main, "data-mfga-main");
+      for (const el of rails) next.set(el, "data-mfga-chrome");
+    }
     setMarks(next);
   };
 
@@ -153,6 +162,7 @@ export function createLayout({ settings } = {}) {
     let dy = 0;
     if (slot && main?.isConnected) {
       const r = main.getBoundingClientRect();
+      if (!r.width) return; // hidden under an opaque push view (photo viewer): keep the last geometry
       dx = round(slot.left - (r.left + scrollX - vars.dx));
       dy = round(slot.top - (r.top + scrollY - vars.dy));
     }
@@ -197,7 +207,7 @@ export function createLayout({ settings } = {}) {
     const host = shellHost(doc);
     host.hidden = false;
     start();
-    markColumns();
+    markPage();
     observeTargets();
     measure();
     health.count(`layout.apply.${mode}`);
@@ -206,9 +216,9 @@ export function createLayout({ settings } = {}) {
   // Facebook re-renders whole regions on navigation and forced reloads: keep host, marks and geometry right.
   function ensure() {
     if (!mode) return;
-    placeHost(shellHost(doc), doc);
+    shellHost(doc);
     if (route && route.mode !== mode && !pushViewOpen(doc)) return apply(route);
-    markColumns();
+    markPage();
     observeTargets();
     measure();
   }

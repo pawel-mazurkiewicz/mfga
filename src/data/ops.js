@@ -38,7 +38,8 @@ export function isDocError(err, op) {
 
 /**
  * Sends `name` with the registry's best doc_id; on a doc_id error invalidates it and retries once with the
- * next candidate. build(op) returns the variables. Resolves null when no doc_id is known at all.
+ * next candidate (invalidated as well if it fails the same way). build(op) returns the variables.
+ * Resolves null when no doc_id is known at all.
  */
 export async function runOp({ client, ops }, name, build) {
   const op = await ops.get(name);
@@ -51,7 +52,13 @@ export async function runOp({ client, ops }, name, build) {
     const next = await ops.get(name);
     if (!next) throw err;
     health.count("ops.retry");
-    return client.request(name, next.docId, build(next));
+    try {
+      return await client.request(name, next.docId, build(next));
+    } catch (retryErr) {
+      // Otherwise the next call would spend a paced request on this id again.
+      if (isDocError(retryErr, next)) ops.invalidate(name, next.docId);
+      throw retryErr;
+    }
   }
 }
 
@@ -129,7 +136,13 @@ export function createOpRegistry({ platform, harvest, now = () => Date.now() }) 
     const fromBackground = (await backgroundOps())[name];
     const mine = memory.get(name);
     const newest = [fromBackground, mine].filter(validEntry).sort((a, b) => (b.seenAt || 0) - (a.seenAt || 0))[0];
-    return newest ? candidate(newest, "learned") : null;
+    if (!newest) return null;
+    // Keep what the background saw: its own state may not survive a service-worker restart.
+    const cached = (await loadCache())[name];
+    if (newest === fromBackground && (cached?.docId !== String(newest.docId) || (cached.seenAt || 0) < (newest.seenAt || 0))) {
+      persist(name, { docId: String(newest.docId), variables: newest.variables ?? null, seenAt: newest.seenAt || now(), source: "background", rev: newest.rev ?? null });
+    }
+    return candidate(newest, "learned");
   }
 
   async function backgroundOps() {

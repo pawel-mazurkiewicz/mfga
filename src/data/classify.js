@@ -71,9 +71,13 @@ export const NON_STORY_UNITS = new Set([
 
 const KEPT_CATEGORIES = new Set(["ORGANIC", "ENGAGEMENT", "UNDECODABLE"]);
 // The likeliest answers first: an organic story decodes after three hashes, an ad after two.
-const DECODE_ORDER = ["SPONSORED", "ORGANIC", "ENGAGEMENT", ...Object.keys(CATEGORY_NUMBERS).filter((n) => !["SPONSORED", "ORGANIC", "ENGAGEMENT"].includes(n))];
+const LIKELY = ["SPONSORED", "ORGANIC", "ENGAGEMENT"];
+const DECODE_ORDER = [...LIKELY, ...Object.keys(CATEGORY_NUMBERS).filter((name) => !LIKELY.includes(name))];
+// Story.sponsored_data under every alias seen (graphql-protocol §6.3; null on organic stories). Only the
+// top-level copy is sure to carry __typename "SponsoredData", and only when typenames are not obfuscated.
+const SPONSORED_DATA_KEYS = ["sponsored_data", "daspo_sto", "th_dat_spo"];
 // edge.sponsored_auction_distance under every alias seen (null on organic edges).
-const AUCTION_KEYS = ["sponsored_auction_distance", "the_disan_sonsore_auctigo", "new_sponsorw_distn_aucton_of", "sposnsor_new_distac_action"];
+const AUCTION_KEYS =["sponsored_auction_distance", "the_disan_sonsore_auctigo", "new_sponsorw_distn_aucton_of", "sposnsor_new_distac_action"];
 const SUSPECT_KEY = /spo|spn|auct|adv/i;
 
 const isObj = (v) => v != null && typeof v === "object" && !Array.isArray(v);
@@ -91,11 +95,11 @@ export async function webCryptoSha256Hex(text) {
  */
 export function createClassifier({ sha256Hex = webCryptoSha256Hex, hideAI = false } = {}) {
   async function edgeCategory(edge) {
-    if (typeof edge.category === "string") return edge.category;
+    if (nonEmpty(edge.category)) return edge.category;
     const sensitive = [edge.cat_sensitive, edge.category_sensitive].find(isObj);
     if (!sensitive) return null;
-    if (typeof sensitive.cat === "string" && sensitive.cat) return sensitive.cat;
-    if (typeof sensitive.enc !== "string" || !sensitive.enc) return null;
+    if (nonEmpty(sensitive.cat)) return sensitive.cat;
+    if (!nonEmpty(sensitive.enc)) return null;
     const name = await decodeCategory(sensitive.enc.toLowerCase(), edge.node.post_id);
     health.count(name ? "classify.enc.decoded" : "classify.enc.undecodable");
     return name ?? "UNDECODABLE";
@@ -104,10 +108,11 @@ export function createClassifier({ sha256Hex = webCryptoSha256Hex, hideAI = fals
   // enc == sha256hex(sha256hex(post_id) + n), n the category number (GHLFeedStoryCategoryObfuscationUtils).
   async function decodeCategory(enc, postId) {
     if (postId == null || postId === "") return null;
+    const hex = async (s) => String(await sha256Hex(s)).toLowerCase();
     try {
-      const seed = await sha256Hex(String(postId));
+      const seed = await hex(String(postId));
       for (const name of DECODE_ORDER) {
-        if (String(await sha256Hex(seed + CATEGORY_NUMBERS[name])).toLowerCase() === enc) return name;
+        if ((await hex(seed + CATEGORY_NUMBERS[name])) === enc) return name;
       }
     } catch (err) {
       health.error("classify.sha256", err);

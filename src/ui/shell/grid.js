@@ -6,7 +6,7 @@ export const GRID = Object.freeze({
   top: 20, // gap between the bar and the columns' content
   left: { x: 0, w: 179 }, // left column, then the 1px #CCC separator at x=179
   content: { x: 195, w: 520 }, // centre column (#contentArea)
-  wide: { x: 195, w: 760 }, // centre column on pages without a right column (groups feed)
+  wide: { x: 195, w: 680 }, // centre column without a right column (groups feed): Facebook's own feed width
   right: { x: 730, w: 233 }, // right column
   rule: 979, // 1px #EDEDED page rule
   footerGap: 20, // space between the tallest column and the footer

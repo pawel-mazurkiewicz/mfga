@@ -215,6 +215,19 @@ test("account-warning pages, checkpoint flags and checkpoint codes halt", async 
   }
 });
 
+test("stopOnCheckpoint: false fails the request and reports, without stopping later requests", async () => {
+  const { client, net, halts } = setup({
+    stopOnCheckpoint: false,
+    harvest: fakeHarvest({ checkpointed: true }),
+    reply: (c, i) => (i === 0 ? response("", { url: "https://www.facebook.com/checkpoint/1501092823525282/" }) : response(OK)),
+  });
+  await rejectsKind(client.request("Op", "11111", {}), "checkpoint");
+  assert.equal(client.halted, false);
+  assert.deepEqual((await client.request("Op", "11111", {})).data, { viewer: { id: "1" } });
+  assert.deepEqual(halts, ["checkpoint-redirect"]);
+  assert.equal(net.calls.length, 2, "the harvested flag alone does not block");
+});
+
 test("warning phrases inside story data never halt", async () => {
   const story = { data: { node: { message: { text: "We noticed unusual activity: \"is_checkpointed\":true, temporarily restricted" } } } };
   const { client, halts } = setup({ reply: () => response(JSON.stringify(story)) });

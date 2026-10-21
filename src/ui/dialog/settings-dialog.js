@@ -24,6 +24,7 @@ const LANGUAGES = [
 ];
 
 let lastTab = "feed"; // reopening the dialog returns to the tab it was closed on
+let active = null; // the open settings dialog: opening it again just returns it
 
 /**
  * openSettingsDialog({ settings, healthSnapshot, exportReport }) -> { close() }
@@ -33,6 +34,7 @@ let lastTab = "feed"; // reopening the dialog returns to the tab it was closed o
  *   version         optional MFGA version for the About tab (platform.version)
  */
 export function openSettingsDialog({ settings, healthSnapshot, exportReport, version = null }) {
+  if (active) return active;
   let dialog = null;
   let binder = null;
   let reopening = false;
@@ -43,7 +45,8 @@ export function openSettingsDialog({ settings, healthSnapshot, exportReport, ver
     binder = current;
     const view = buildView({ binder: current, settings, healthSnapshot, exportReport, version });
     current.sync(settings.get());
-    const focus = (focusSetting && view.el.querySelector(`[data-mfga-setting="${focusSetting}"]`)) || view.selectedTab();
+    const control = focusSetting && view.el.querySelector(`[data-mfga-setting="${focusSetting}"]`);
+    const focus = control && !control.closest("[hidden]") ? control : view.selectedTab();
     dialog = openDialog({
       title: t("settings.title"),
       body: view.el,
@@ -53,8 +56,9 @@ export function openSettingsDialog({ settings, healthSnapshot, exportReport, ver
       className: "mfga-settings-dialog",
       onClose: () => {
         current.flush();
-        view.dispose();
-        if (!reopening) unsubscribe?.();
+        if (reopening) return;
+        unsubscribe?.();
+        active = null;
       },
     });
   }
@@ -74,7 +78,8 @@ export function openSettingsDialog({ settings, healthSnapshot, exportReport, ver
 
   open();
   unsubscribe = settings.subscribe?.(safe("settings-dialog", onSettings, { disableOnError: false }));
-  return { close: () => dialog.close() };
+  active = { close: () => dialog.close() };
+  return active;
 }
 
 function buildView(ctx) {
@@ -101,7 +106,9 @@ function buildView(ctx) {
     );
   }
 
+  let selected = lastTab;
   function select(name, { focus = false } = {}) {
+    selected = name;
     lastTab = name;
     for (const n of TABS) {
       tabs[n].setAttribute("aria-selected", String(n === name));
@@ -114,18 +121,17 @@ function buildView(ctx) {
 
   const tablist = h("div.mfga-settings-tabs", { role: "tablist" }, TABS.map((n) => tabs[n]));
   tablist.addEventListener("keydown", (ev) => {
-    const i = TABS.indexOf(lastTab);
+    const i = TABS.indexOf(selected);
     const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: TABS.length - 1 }[ev.key];
     if (next === undefined) return;
     ev.preventDefault();
     select(TABS[(next + TABS.length) % TABS.length], { focus: true });
   });
 
-  select(TABS.includes(lastTab) ? lastTab : "feed");
+  select(selected);
   return {
     el: h("div.mfga-settings", tablist, TABS.map((n) => panelEls[n])),
-    selectedTab: () => tabs[lastTab],
-    dispose: () => panels.health.dispose(),
+    selectedTab: () => tabs[selected],
   };
 }
 
@@ -186,7 +192,7 @@ function feedPanel({ binder, settings }) {
       row(t("settings.feed.keywords"), (labelId) => {
         const hintId = uid("hint");
         return [
-          binder.listTextarea("feed.keywords", { class: "mfga-settings-keywords", "aria-labelledby": labelId, "aria-describedby": hintId }),
+          binder.keywordList("feed.keywords", { class: "mfga-settings-keywords", "aria-labelledby": labelId, "aria-describedby": hintId }),
           h("div.mfga-settings-hint", { id: hintId }, t("settings.feed.keywordsHint")),
         ];
       }),

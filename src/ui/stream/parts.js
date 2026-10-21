@@ -1,11 +1,12 @@
 // Small DOM builders shared by stories, attachments and the UFI.
 import { h, svg, text } from "../dom.js";
 import { safe } from "../../shared/util.js";
-import { textSegments } from "./segments.js";
+import { DEFAULTS } from "../../shared/settings.js";
+import { textSegments } from "../../data/text.js";
 
 const FACEBOOK_HOST = /(^|\.)facebook\.com$/i;
 
-export function isFacebookUrl(url) {
+function isFacebookUrl(url) {
   try {
     return FACEBOOK_HOST.test(new URL(url).hostname);
   } catch {
@@ -84,6 +85,12 @@ export function routeClicks(root, ctx) {
       ctx.open(a.href, { newTab: false });
     }),
   );
+}
+
+/** Reads the settings object whether ctx.settings is the plain object or the reactive store. */
+export function settingsOf(ctx) {
+  const s = typeof ctx?.settings?.get === "function" ? ctx.settings.get() : ctx?.settings;
+  return s || DEFAULTS;
 }
 
 /** Current time in ms from the context clock. */

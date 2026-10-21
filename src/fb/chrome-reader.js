@@ -3,6 +3,7 @@
 // ("mfga:rail") because the Feeds routes (/?filter=…) render no rails at all.
 import { safe, health, normLabel } from "../shared/util.js";
 import { classifyRoute } from "./routes.js";
+import { HOST_ID, findBanner } from "./layout.js";
 
 export const RAIL_KEY = "mfga:rail";
 const RAIL_VERSION = 1;
@@ -55,14 +56,15 @@ export function countsFromLabels(labels) {
 }
 
 const APOS = "['’]";
+// Most specific first: "X and 3 others …" must not be read as one person called "X and 3 others".
 const BIRTHDAY_PATTERNS = [
-  [new RegExp(`^(.+?)${APOS}s? birthday is today`, "i"), "one"],
-  [/^(.+?) has a birthday today/i, "one"],
-  [/^(.+?) ma dziś urodziny/i, "one"],
-  [/^(.+?) and (\d+) others? ha(?:ve|s) birthdays? today/i, "others"],
+  [/^(.+?) and (\d+) others? (?:have birthdays|has a birthday) today/i, "others"],
   [/^(.+?) i (\d+) \S+(?: \S+)? mają dziś urodziny/i, "others"],
   [/^(.+?) and (.+?) have birthdays today/i, "list"],
   [/^(.+?) i (.+?) mają dziś urodziny/i, "list"],
+  [new RegExp(`^(.+?)${APOS}s? birthday is today`, "i"), "one"],
+  [/^(.+?) has a birthday today/i, "one"],
+  [/^(.+?) ma dziś urodziny/i, "one"],
 ];
 
 /**
@@ -186,11 +188,8 @@ export function railToCache(live, prev, now = Date.now()) {
 // ---------------------------------------------------------------------------------------------------
 // DOM finders (language-free first, then EN/PL labels)
 
-const notInLayer = (el) => !el.closest('[role="dialog"]');
-
-export function findBanner(doc = document) {
-  return [...doc.querySelectorAll('[role="banner"]')].find(notInLayer) || null;
-}
+// Facebook's own chrome only: not inside a dialog/push view, and never our shell (which links to the same places).
+const isFacebookChrome = (el) => !el.closest(`[role="dialog"], #${HOST_ID}`);
 
 /** The banner's "Account Controls and Settings" navigation. */
 export function findAccountNav(doc = document) {
@@ -204,10 +203,13 @@ export function findAccountNav(doc = document) {
   );
 }
 
-/** The account controls' real buttons (Facebook adds zero-size focus-helper duplicates with tabindex=-1). */
+/**
+ * The account controls' real buttons: not Facebook's zero-size focus-helper duplicates (tabindex=-1), not
+ * buttons nested in buttons, not rows of an open dropdown.
+ */
 function accountButtons(nav) {
   return [...nav.querySelectorAll('[role="button"]')].filter(
-    (b) => b.getAttribute("tabindex") !== "-1" && !b.parentElement?.closest('[role="button"]'),
+    (b) => b.getAttribute("tabindex") !== "-1" && !b.parentElement?.closest('[role="button"], [role="dialog"]'),
   );
 }
 
@@ -221,7 +223,7 @@ export function findAccountButton(doc = document) {
 
 export function findLeftRail(doc = document) {
   const navs = [...doc.querySelectorAll('[role="navigation"]')].filter(
-    (n) => notInLayer(n) && !n.closest('[role="banner"]') && !n.closest('[role="main"]'),
+    (n) => isFacebookChrome(n) && !n.closest('[role="banner"]') && !n.closest('[role="main"]'),
   );
   return (
     navs.find((n) => SHORTCUTS_NAV.has(normLabel(n.getAttribute("aria-label")))) ||
@@ -231,7 +233,7 @@ export function findLeftRail(doc = document) {
 }
 
 export function findRightRail(doc = document) {
-  return [...doc.querySelectorAll('[role="complementary"]')].find((r) => notInLayer(r) && !r.closest('[role="main"]')) || null;
+  return [...doc.querySelectorAll('[role="complementary"]')].find((r) => isFacebookChrome(r) && !r.closest('[role="main"]')) || null;
 }
 
 function imageOf(el) {
@@ -272,6 +274,12 @@ function readContacts(rail) {
   return out;
 }
 
+/** The viewer's picture in the banner's "Your profile" button (svg <image>, 40px). */
+function accountAvatar(doc) {
+  const btn = findAccountButton(doc);
+  return btn ? imageOf(btn) : null;
+}
+
 function readCookie(name, doc) {
   const m = new RegExp(`(?:^|;\\s*)${name}=(\\d+)`).exec(doc.cookie || "");
   return m ? m[1] : null;
@@ -283,7 +291,7 @@ export function readCounts(doc = document, railFriendsCount = null) {
   const nav = findAccountNav(doc);
   if (nav) Object.assign(out, countsFromLabels(accountButtons(nav).map((b) => b.getAttribute("aria-label") || "")));
   const banner = findBanner(doc);
-  const friendsTab = banner && [...banner.querySelectorAll('[role="navigation"] a[aria-label]')].find((a) => /^\/friends\/?$/.test(new URL(a.href, doc.baseURI).pathname));
+  const friendsTab = banner && [...banner.querySelectorAll('[role="navigation"] a[aria-label]')].find((a) => /^\/friends\/?$/.test(new URL(a.href).pathname));
   if (friendsTab) out.friendRequests = parseCount(friendsTab.getAttribute("aria-label"));
   else if (railFriendsCount != null) out.friendRequests = railFriendsCount;
   return out;
@@ -321,10 +329,7 @@ export function createChromeReader({ platform, identityHint = null } = {}) {
     return {
       userId,
       counts: readCounts(document, rail?.friendsCount ?? null),
-      bannerAvatar: (() => {
-        const btn = findAccountButton(document);
-        return btn ? imageOf(btn) : null;
-      })(),
+      bannerAvatar: accountAvatar(document),
       rail: {
         me: rail?.me || null,
         groups: rail ? rail.groups : undefined,

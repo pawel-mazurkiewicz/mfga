@@ -1,6 +1,8 @@
 // Styles for the 2010 pop_dialog (dialog.js) and the settings dialog (settings-dialog.js, health.js).
 // Dialog values: retro-spec-2010 §8.3 ([CJS10] frame, [FB12] .pop_content title/content/body/buttons).
 
+import { FONT_LUCIDA, FONT_TAHOMA } from "../css/base.js";
+
 export function dialogCss() {
   return [frameCss(), settingsCss(), healthCss(), aboutCss()].join("\n");
 }
@@ -15,8 +17,7 @@ function frameCss() {
 .mfga-dialog-content{background:#FFF}
 .mfga-dialog-title{margin:0;padding:5px 10px;border:1px solid #3B5998;border-bottom:0;background:#6D84B4;color:#FFF;font-size:14px;font-weight:bold;line-height:17px}
 .mfga-dialog-body{padding:10px;border:1px solid #555;border-top:0;border-bottom-color:#CCC}
-.mfga-dialog-footer{display:flex;align-items:center;justify-content:flex-end;gap:4px;padding:8px 10px;border:1px solid #555;border-top:0;background:#F2F2F2}
-.mfga-dialog-footer .mfga-btn+.mfga-btn{margin-left:0}
+.mfga-dialog-footer{display:flex;align-items:center;justify-content:flex-end;padding:8px 10px;border:1px solid #555;border-top:0;background:#F2F2F2}
 .mfga-dialog-note{margin-right:auto;color:#808080;line-height:17px}`;
 }
 
@@ -43,16 +44,15 @@ function settingsCss() {
 .mfga-settings-off .mfga-settings-check{cursor:default}
 .mfga-settings-inline-error{margin:3px 0 0;color:#DD3C10}
 .mfga-settings-keywords{width:100%;height:64px}
-.mfga-settings-font-lucida{font-family:"lucida grande",tahoma,verdana,arial,sans-serif}
-.mfga-settings-font-tahoma{font-family:tahoma,"lucida grande",verdana,arial,sans-serif}`;
+.mfga-settings-font-lucida{font-family:${FONT_LUCIDA}}
+.mfga-settings-font-tahoma{font-family:${FONT_TAHOMA}}`;
 }
 
 function healthCss() {
   return `
 .mfga-health-status{margin:0 0 8px}
-.mfga-health-actions{display:flex;align-items:flex-start;gap:4px;margin:0 0 6px}
-.mfga-health-actions .mfga-btn+.mfga-btn{margin-left:0}
-.mfga-health-actions .mfga-btn.mfga-health-reset{margin-left:auto}
+.mfga-health-actions{display:flex;align-items:flex-start;margin:0 0 6px}
+.mfga-btn.mfga-health-reset{margin-left:auto}
 .mfga-health-exported{margin:0 0 10px;color:#333}
 .mfga-health-exported:empty{display:none}
 .mfga-health-section{margin:12px 0 0}
@@ -62,7 +62,9 @@ function healthCss() {
 .mfga-health-table{width:100%;table-layout:fixed}
 .mfga-health-table th{padding:2px 6px 2px 0;color:#666;font-weight:bold;text-align:left}
 .mfga-health-table td{padding:1px 6px 1px 0;vertical-align:top;overflow-wrap:anywhere}
-.mfga-health-table .mfga-health-num{width:60px;padding-right:0;text-align:right;white-space:nowrap}
+.mfga-health-table .mfga-health-num{width:50px;padding-right:12px;text-align:right;white-space:nowrap}
+.mfga-health-table .mfga-health-num:last-child{padding-right:0}
+.mfga-health-errors th:first-child{width:110px}
 .mfga-health-table tr+tr td{border-top:1px solid #F2F2F2}
 .mfga-health-total{margin-left:auto;color:#808080;font-weight:normal}`;
 }

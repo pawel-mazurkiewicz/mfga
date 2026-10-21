@@ -1,44 +1,31 @@
 // 2010 News Feed stylesheet: stream header, composer, stories, attachments, UFI, pager, welcome box.
 // Geometry follows docs/research/retro-spec-2010.md §5 (measured from assets/reference/2010-home.png).
-
-const LUCIDA = `"lucida grande", tahoma, verdana, arial, sans-serif`;
-const TAHOMA = `tahoma, "lucida grande", verdana, arial, sans-serif`;
+// Fonts, links, buttons (.mfga-btn), the spinner, the pill and .mfga-error come from base.js (WP-F); the
+// stream only adds its own geometry. Overrides of base classes are scoped to win in any concatenation order.
 
 const BLUE = "#3B5998";
 const UFI_BG = "#EDEFF4";
 
-function rootRules(font) {
-  return `
-.mfga-stream,.mfga-story{font-family:${font};font-size:11px;line-height:1.28;color:#333;text-align:left;direction:ltr}
-.mfga-stream *,.mfga-story *,.mfga-stream *::before,.mfga-story *::before,.mfga-stream *::after,.mfga-story *::after{box-sizing:border-box}
-.mfga-stream [hidden],.mfga-story [hidden]{display:none!important}
-.mfga-stream a,.mfga-story a{color:${BLUE};text-decoration:none;cursor:pointer}
-.mfga-stream a:hover,.mfga-story a:hover{text-decoration:underline}
-.mfga-stream img,.mfga-story img{border:0;max-width:none}
+const rootRules = `
+.mfga-stream *,.mfga-story,.mfga-story *,.mfga-stream *::before,.mfga-stream *::after{box-sizing:border-box}
+.mfga-stream img{max-width:none}
 .mfga-linkbtn{display:inline;margin:0;padding:0;border:0;background:none;font:inherit;line-height:inherit;color:${BLUE};text-align:left;cursor:pointer}
 .mfga-linkbtn:hover{text-decoration:underline}
-.mfga-linkbtn:focus-visible,.mfga-feed-composer:focus-visible,.mfga-feed-more:focus-visible{outline:1px dotted #333;outline-offset:1px}
-.mfga-sep{color:#999}
 .mfga-time{color:#808080;text-decoration:none;border:0;cursor:inherit}
 .mfga-pic-blank{display:block}
 `;
-}
 
-function headerRules() {
-  return `
+const headerRules = `
 .mfga-feed-header{position:relative;height:20px;margin:0 0 20px;line-height:20px}
 .mfga-feed-ico{position:absolute;left:0;top:3px}
-.mfga-feed-title{margin:0 0 0 22px;padding:0;font-size:16px;font-weight:normal;line-height:20px;color:#333}
+.mfga-stream .mfga-feed-title{margin:0 0 0 22px;padding:0;font-size:16px;font-weight:normal;line-height:20px;color:#333}
 .mfga-feed-modes{position:absolute;right:0;top:0;font-size:13px;line-height:20px;white-space:nowrap}
-.mfga-feed-mode-on{font-weight:bold;color:#333}
-.mfga-feed-dot{font-weight:bold;color:#333}
-.mfga-feed-pill{display:inline-block;vertical-align:top;height:14px;margin:4px 0 0 5px;padding:0 6px;border-radius:7px;background:#6D84B4;color:#fff;font-size:11px;font-weight:bold;line-height:14px}
+.mfga-feed-mode-on,.mfga-feed-dot{font-weight:bold;color:#333}
+.mfga-feed-modes .mfga-feed-pill{vertical-align:top;margin:4px 0 0 5px}
 .mfga-feed-composer{height:29px;margin:0 0 1px;padding:5px 6px 6px;border:1px solid #DBDBDB;border-bottom-color:#D3D3D3;box-shadow:inset 0 1px 0 #F5F5F5;background:#fff;color:#777;font-size:13px;line-height:16px;cursor:text;overflow:hidden;white-space:nowrap}
 `;
-}
 
-function storyRules() {
-  return `
+const storyRules = `
 .mfga-story{position:relative;padding:9px 0 10px;border-bottom:1px solid #F7F7F7}
 .mfga-story-pic{position:absolute;left:0;top:9px;display:block;width:50px;height:50px;overflow:hidden;background:#F0F2F7}
 .mfga-story-pic img,.mfga-story-pic svg{display:block;width:50px;height:50px;object-fit:cover}
@@ -46,8 +33,7 @@ function storyRules() {
 .mfga-story-msg{font-size:13px;line-height:16px;color:#333;overflow-wrap:break-word}
 .mfga-story-actor{font-weight:bold}
 .mfga-story-text{white-space:pre-line}
-.mfga-story-passive{color:#333}
-.mfga-story-arrow{display:inline-block;width:0;height:0;margin:0 5px 1px;border-left:5px solid #6D84B4;border-top:4px solid transparent;border-bottom:4px solid transparent;vertical-align:middle}
+.mfga-story-arrow{display:inline-block;width:0;height:0;margin:0 1px 1px;border-left:5px solid #6D84B4;border-top:4px solid transparent;border-bottom:4px solid transparent;vertical-align:middle}
 .mfga-story-title{margin-top:2px;font-size:13px;font-weight:bold;line-height:16px;color:#333;overflow-wrap:break-word}
 .mfga-story-meta{margin-top:3px;font-size:11px;line-height:14px;color:#808080}
 .mfga-story-time,.mfga-story-time .mfga-time,.mfga-story-ai{color:#808080}
@@ -55,10 +41,8 @@ function storyRules() {
 .mfga-story-shared .mfga-story-meta{margin-top:2px}
 .mfga-story-attachments{margin-top:6px}
 `;
-}
 
-function attachmentRules() {
-  return `
+const attachmentRules = `
 .mfga-att+.mfga-att{margin-top:6px}
 .mfga-att-photos{display:flex;flex-wrap:wrap;gap:4px}
 .mfga-att-photo{position:relative;display:block;padding:3px;border:1px solid #CCC;background:#fff;line-height:0}
@@ -75,30 +59,27 @@ function attachmentRules() {
 .mfga-att-live{position:absolute;left:5px;top:5px;padding:0 4px;background:#F03D25;color:#fff;font-size:9px;font-weight:bold;line-height:13px}
 .mfga-att-player{display:block;max-width:100%;background:#000}
 .mfga-att-caption{margin-top:3px;color:#808080}
-.mfga-att-link{display:flex;align-items:flex-start;line-height:14px}
+.mfga-att-link,.mfga-att-event{display:flex;align-items:flex-start;line-height:14px}
 .mfga-att-link-img{flex:none;display:block;margin-right:10px;line-height:0}
 .mfga-att-link-img img{display:block;max-width:90px;max-height:90px}
 .mfga-att-link-body{flex:1;min-width:0;overflow-wrap:break-word}
 .mfga-att-title{font-weight:bold}
 .mfga-att-source{color:#808080}
 .mfga-att-desc{margin-top:2px;color:#808080}
-.mfga-att-event{display:flex;align-items:flex-start;line-height:14px}
 .mfga-att-event-ico{margin:0 6px 0 0}
 .mfga-att-unavailable{padding:7px 10px;border:1px solid #CCC;background:#F2F2F2;color:#808080;line-height:14px}
 .mfga-att-unavailable-title{font-weight:bold;color:#333}
 `;
-}
 
-function ufiRules(font) {
-  return `
+const ufiRules = `
 .mfga-ufi{width:355px;max-width:100%;margin-top:2px;line-height:14px}
 .mfga-ufi-nub{display:block;width:0;height:0;margin:0 0 -2px 16px;border:5px solid transparent;border-top:0;border-bottom-color:${UFI_BG}}
 .mfga-ufi-item{margin-top:2px;padding:5px 5px 4px;background:${UFI_BG};line-height:14px;overflow-wrap:break-word}
 .mfga-ufi-likes,.mfga-ufi-viewall{display:flex;align-items:flex-start}
 .mfga-ufi-likes .mfga-ufi-ico{margin:1px 6px 0 0}
-.mfga-ufi-viewall{padding-bottom:6px}
+.mfga-ufi-viewall{padding-bottom:5px}
 .mfga-ufi-viewall .mfga-ufi-ico{margin:2px 6px 0 1px}
-.mfga-ufi-spinner{margin-left:6px}
+.mfga-ufi-viewall .mfga-ufi-spinner{margin:1px 0 0 6px}
 .mfga-ufi-comment{display:flex;align-items:flex-start}
 .mfga-ufi-pic{flex:none;display:block;width:32px;height:32px;margin-right:7px;overflow:hidden;background:#F0F2F7}
 .mfga-ufi-pic img,.mfga-ufi-pic svg{display:block;width:32px;height:32px;object-fit:cover}
@@ -112,7 +93,7 @@ function ufiRules(font) {
 .mfga-ufi-me{display:none}
 .mfga-ufi-add-active .mfga-ufi-me{display:block}
 .mfga-ufi-add-body{flex:1;min-width:0}
-.mfga-ufi-input{display:block;width:100%;height:22px;min-height:22px;margin:0;padding:3px;border:1px solid #CBD3E0;border-radius:0;background:#fff;color:#333;font:11px/14px ${font};resize:none;overflow:hidden;outline:none;box-shadow:none}
+.mfga-ufi-input{display:block;width:100%;height:22px;min-height:22px;margin:0;padding:3px;border:1px solid #CBD3E0;border-radius:0;background:#fff;color:#333;font-family:inherit;font-size:11px;line-height:14px;resize:none;overflow:hidden;outline:none;box-shadow:none}
 .mfga-ufi-input::placeholder{color:#777;opacity:1}
 .mfga-ufi-add-active .mfga-ufi-input{min-height:32px;border-color:#BDC7D8}
 .mfga-ufi-add-actions{display:none;margin-top:4px;text-align:right}
@@ -121,43 +102,28 @@ function ufiRules(font) {
 .mfga-busy .mfga-ufi-submit{opacity:.6;cursor:default}
 .mfga-ufi-item.mfga-ufi-error{padding-left:5px;border-left:2px solid #AAA7A2;background:#F2F2F2;color:#111}
 `;
-}
 
-function buttonRules(font) {
-  return `
-.mfga-ufi-submit,.mfga-feed-retry{display:inline-block;margin:0;padding:2px 6px;border:1px solid #999;border-bottom-color:#888;background:linear-gradient(#F8F8F8,#E3E3E3);box-shadow:0 1px 0 rgba(0,0,0,.1);color:#333;font:bold 11px/13px ${font};text-align:center;white-space:nowrap;cursor:pointer;vertical-align:middle}
-.mfga-ufi-submit{border-color:#29447E #29447E #1A356E;background:#5B74A8;box-shadow:inset 0 1px 0 #8A9CC2,0 1px 0 rgba(0,0,0,.1);color:#fff}
-.mfga-ufi-submit:active{background:#4F6AA3;border-bottom-color:#29447E}
-.mfga-feed-retry:active{background:#DDD;border-bottom-color:#999;box-shadow:0 1px 0 rgba(0,0,0,.05)}
-`;
-}
-
-function footerRules(font) {
-  return `
+const footerRules = `
 .mfga-feed-footer{margin-top:10px}
-.mfga-feed-more{display:block;width:100%;margin:0;padding:7px 10px 8px;border:0;border-top:1px solid #D8DFEA;background:${UFI_BG};color:${BLUE};font:bold 11px/14px ${font};text-align:left;cursor:pointer}
+.mfga-feed-more{display:block;width:100%;margin:0;padding:7px 10px 8px;border:0;border-top:1px solid #D8DFEA;background:${UFI_BG};color:${BLUE};font:inherit;font-weight:bold;line-height:14px;text-align:left;cursor:pointer}
 .mfga-feed-more:hover{background:#D8DFEA}
 .mfga-feed-more-arrow{display:inline-block;width:0;height:0;margin:0 6px 2px 0;border-top:5px solid ${BLUE};border-left:4px solid transparent;border-right:4px solid transparent;vertical-align:middle}
 .mfga-feed-more.mfga-loading{text-align:center;cursor:default}
 .mfga-feed-more.mfga-loading:hover{background:${UFI_BG}}
-.mfga-feed-spinner,.mfga-ufi-spinner{display:inline-block;width:4px;height:11px;margin-right:12px;vertical-align:middle;animation:mfga-stream-bars .9s steps(1) infinite}
-@keyframes mfga-stream-bars{0%{background:${BLUE};box-shadow:6px 0 #BCC6DB,12px 0 #BCC6DB}33%{background:#BCC6DB;box-shadow:6px 0 ${BLUE},12px 0 #BCC6DB}66%{background:#BCC6DB;box-shadow:6px 0 #BCC6DB,12px 0 ${BLUE}}}
 .mfga-feed-empty{padding:20px 10px;color:#808080;text-align:center}
 .mfga-feed-empty-title{margin-bottom:4px;font-size:13px;color:#333}
 .mfga-feed-end{padding:10px;color:#808080;text-align:center}
-.mfga-feed-error{padding:7px 10px;border:1px solid #DD3C10;background:#FFEBE8;color:#333;line-height:20px}
+.mfga-feed-footer .mfga-feed-error{line-height:22px}
 .mfga-feed-status{margin-top:8px;color:#808080;text-align:center}
 `;
-}
 
-function welcomeRules() {
-  return `
-.mfga-welcome{margin:0 0 23px;padding:14px 20px 12px;border:1px solid #E1E5EE;background:${UFI_BG}}
+const welcomeRules = `
+.mfga-welcome{margin:0 0 23px;padding:14px 20px 13px;border:1px solid #E1E5EE;background:${UFI_BG}}
 .mfga-welcome-head{display:flex;align-items:flex-start;justify-content:space-between}
-.mfga-welcome-title{margin:0;padding:0;font-size:16px;font-weight:normal;line-height:20px;color:#333}
+.mfga-stream .mfga-welcome-title{margin:0;padding:0;font-size:16px;font-weight:normal;line-height:20px;color:#333}
 .mfga-welcome-close{flex:none;margin-left:10px;line-height:14px}
 .mfga-welcome-main{display:flex;align-items:flex-start;margin-top:14px}
-.mfga-welcome-steps{flex:1;min-width:0;margin:6px 0 0;padding:0;list-style:none}
+.mfga-stream .mfga-welcome-steps{flex:1;min-width:0;margin:6px 0 0;padding:0;list-style:none}
 .mfga-welcome-step{display:flex;align-items:flex-start;margin:0 0 10px;line-height:14px}
 .mfga-welcome-step:last-child{margin-bottom:0}
 .mfga-welcome-num{flex:none;width:15px;height:16px;margin-right:8px;background:#A6B2CA;color:#fff;font-weight:bold;line-height:16px;text-align:center}
@@ -175,7 +141,7 @@ function welcomeRules() {
 .mfga-welcome-mini-center{left:44px;top:11px;width:73px}
 .mfga-welcome-mhead.mfga-welcome-block{width:18px;height:3px;margin-bottom:3px;background:#ACACAD}
 .mfga-welcome-composer.mfga-welcome-block{height:5px;margin-bottom:4px;border:1px solid #D3D3D3;background:#fff}
-.mfga-welcome-mini-story{position:static!important;display:flex!important;gap:3px;margin-bottom:4px}
+.mfga-welcome-mini .mfga-welcome-mini-story{position:static;display:flex;gap:3px;margin-bottom:4px}
 .mfga-welcome-mini-story .mfga-welcome-pic{flex:none;width:8px;height:8px}
 .mfga-welcome-mini-story .mfga-welcome-lines{flex:1;height:12px}
 .mfga-welcome-mini-right{left:126px;top:11px;width:42px}
@@ -185,10 +151,11 @@ function welcomeRules() {
 .mfga-welcome-m2{left:95px;top:3px}
 .mfga-welcome-m3{left:150px;top:0}
 `;
-}
 
-/** The stream stylesheet; `settings.look.font` picks Tahoma or Lucida Grande first. */
-export function streamCss(settings) {
-  const font = settings?.look?.font === "tahoma" ? TAHOMA : LUCIDA;
-  return [rootRules(font), headerRules(), storyRules(), attachmentRules(), ufiRules(font), buttonRules(font), footerRules(font), welcomeRules()].join("").trim();
+/**
+ * The stream stylesheet. Contract signature streamCss(settings); nothing here depends on settings
+ * (the font follows base.js's --mfga-font, set from <html data-mfga-font>).
+ */
+export function streamCss() {
+  return [rootRules, headerRules, storyRules, attachmentRules, ufiRules, footerRules, welcomeRules].join("").trim();
 }

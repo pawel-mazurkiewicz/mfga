@@ -1,0 +1,210 @@
+<!doctype html>
+<!--
+  Facebook's 2026 desktop chrome around the Home feed, as documented in docs/research/dom-chrome.md:
+  banner (logo, search combobox, tabs nav, account controls with the live 2026 aria-labels and badges),
+  the Home layout (left "Shortcuts" rail, [role=main] column, right [role=complementary] rail), the docked
+  chat root, and a body-level portal holding a [role=dialog]. Class names are atomic-style placeholders;
+  MFGA never selects on them. The geometry mirrors CometHomeLayout / CometMainContentWrapper, and the
+  wrappers paint the wash colour (the worst case for a shell drawn underneath them).
+  The inline script stands in for React: anchor clicks inside the root are routed with pushState, and the
+  "Your profile" button opens the account menu inside the banner.
+-->
+<html id="facebook" class="_9dls __fb-light-mode" lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<title>(6) Facebook</title>
+<style>
+:root, .__fb-light-mode { --header-height: 56px; --web-wash: #F0F2F5; --card-background: #FFFFFF; --primary-text: #050505; --secondary-text: #65676B; --divider: #CED0D4; --blue-link: #0064D1; --card-corner-radius: 8px; --surface-background: #FFFFFF; }
+body { margin: 0; background: var(--web-wash); color: var(--primary-text); font-family: "Inter", Helvetica, Arial, sans-serif; font-size: 15px; }
+a { color: var(--primary-text); text-decoration: none; }
+ul { list-style: none; margin: 0; padding: 0; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+.x1n2onr6 { position: relative; }
+.x1ja2u2z { z-index: 0; }
+/* banner (CometBaseAppNavigation) */
+.xstart { position: fixed; top: 0; left: 0; z-index: 3; height: var(--header-height); display: flex; align-items: center; gap: 8px; padding: 0 16px; background: var(--surface-background); }
+.xtabs { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 1; height: var(--header-height); display: flex; }
+.xtabs ul { display: flex; }
+.xtabs a { display: block; position: relative; width: 110px; height: var(--header-height); line-height: var(--header-height); text-align: center; }
+.xtabs .badge { position: absolute; top: 6px; right: 24px; background: #E41E3F; color: #fff; border-radius: 9px; padding: 0 5px; font-size: 12px; line-height: 18px; }
+.xend { position: fixed; top: 0; right: 0; z-index: 3; height: var(--header-height); display: flex; align-items: center; padding: 0 16px; background: var(--surface-background); }
+.xend [role=navigation] { display: flex; align-items: center; gap: 8px; }
+.xend [role=button] { position: relative; width: 40px; height: 40px; border-radius: 50%; background: #E4E6EB; cursor: pointer; }
+.xend .count { position: absolute; top: -4px; right: -4px; background: #E41E3F; color: #fff; border-radius: 9px; padding: 0 5px; font-size: 12px; }
+.xsearch input { width: 240px; height: 40px; border-radius: 20px; border: 0; background: #F0F2F5; padding: 0 12px; }
+.xmenu { position: absolute; top: 48px; right: 0; width: 360px; padding: 8px; background: #fff; border-radius: 8px; box-shadow: 0 12px 28px rgba(0,0,0,.2); }
+/* main content wrapper (CometMainContentWrapper) and home layout (CometHomeLayout) */
+.xmainwrap { position: relative; top: var(--header-height); min-height: calc(100vh - var(--header-height)); background: var(--web-wash); }
+.xhome { display: flex; justify-content: space-between; min-width: 320px; max-width: 1464px; margin: 0 auto; }
+.xleft { flex: 0 1 360px; min-width: 280px; max-width: 360px; position: sticky; top: var(--header-height); align-self: flex-start; height: calc(100vh - var(--header-height)); overflow-y: auto; }
+.xcenter { flex: 1 1 0; display: flex; justify-content: center; min-width: 0; }
+.xright { flex: 0 1 360px; min-width: 280px; max-width: 360px; position: sticky; top: var(--header-height); align-self: flex-start; }
+@media (max-width: 1099px) { .xleft { display: none; } }
+@media (max-width: 899px) { .xright { display: none; } }
+[role=main] { width: 100%; max-width: 680px; padding: 16px 0 0; }
+.xrow { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 8px; }
+.xrow img, .xrow svg { width: 36px; height: 36px; border-radius: 50%; }
+.xcard { background: var(--card-background); border-radius: var(--card-corner-radius); box-shadow: 0 1px 2px rgba(0,0,0,.2); margin: 0 0 16px; padding: 12px 16px; }
+.xpost { height: 320px; }
+.xrail h3 { font-size: 17px; color: var(--secondary-text); margin: 16px 8px 8px; }
+.xchat { position: fixed; right: 0; bottom: 0; z-index: 1; isolation: isolate; }
+.xchat [role=button] { width: 48px; height: 48px; margin: 0 16px 16px 0; border-radius: 50%; background: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.3); }
+/* a modal portal (BaseCometModal) */
+.xmodal { position: fixed; inset: 0; z-index: 0; display: flex; align-items: center; justify-content: center; background: rgba(244,244,244,.8); }
+.xmodal[hidden] { display: none; }
+.xmodal [role=dialog] { width: 500px; height: 300px; background: #fff; border-radius: 8px; box-shadow: 0 12px 28px rgba(0,0,0,.2); }
+</style>
+</head>
+<body class="_6s5d _71pn system-fonts--body">
+<div id="mount_0_0_Qx">
+<div class="x9f619 x1n2onr6 x1ja2u2z">
+<div class="x78zum5 xdt5ytf x1n2onr6 x1ja2u2z">
+
+<div role="banner">
+  <div class="xstart">
+    <a aria-label="Facebook" href="/" role="link"><svg viewBox="0 0 36 36" width="40" height="40"><circle cx="18" cy="18" r="18" fill="#0866FF"></circle></svg></a>
+    <div class="xsearch"><label><input type="search" role="combobox" aria-label="Search Facebook" placeholder="Search Facebook" aria-expanded="false"></label></div>
+  </div>
+  <div class="xtabs">
+    <div role="navigation" aria-label="Facebook">
+      <ul>
+        <li><span><div><a aria-label="Home" aria-current="page" href="/" role="link">Home</a></div></span></li>
+        <li><span><div><a aria-label="Friends, 3 notifications" href="/friends/" role="link">Friends<span class="badge"><span class="sr">3 items</span><span aria-hidden="true">3</span></span></a></div></span></li>
+        <li><span><div><a aria-label="Groups" href="/groups/" role="link">Groups</a></div></span></li>
+        <li><span><div><a aria-label="Video" href="/watch/?ref=tab" role="link">Video</a></div></span></li>
+        <li><span><div><a aria-label="Marketplace" href="/marketplace/?ref=app_tab" role="link">Marketplace</a></div></span></li>
+      </ul>
+    </div>
+  </div>
+  <div class="xend">
+    <div role="navigation" aria-label="Account Controls and Settings">
+      <div><a href="/friends/">Find friends</a></div>
+      <div><div role="button" aria-label="Facebook menu" aria-haspopup="dialog" aria-expanded="false" tabindex="0"><svg width="20" height="20"></svg></div></div>
+      <span><div><div role="button" aria-label="Messenger, 1 unread" aria-haspopup="dialog" aria-expanded="false" tabindex="0"><svg width="20" height="20"></svg><div data-visualcompletion="ignore"><div><span class="count"><div class="sr">1 Unread Chats</div><span>1</span></span></div></div></div></div></span>
+      <div role="button" aria-label="Messenger" aria-haspopup="dialog" aria-expanded="false" tabindex="-1" style="width:0;height:0"></div>
+      <div><div role="button" aria-label="Notifications, 5 unread" aria-haspopup="dialog" aria-expanded="false" tabindex="0"><svg width="20" height="20"></svg><span class="count"><span class="sr">Number of unread notifications</span><span aria-hidden="true">5</span></span></div></div>
+      <div><div role="button" aria-label="Your profile" aria-haspopup="dialog" aria-expanded="false" tabindex="0" id="fx-account"><svg aria-label="Your profile" role="img" width="40" height="40"><mask id="fx-m"><circle cx="20" cy="20" r="20" fill="white"></circle></mask><g mask="url(#fx-m)"><image x="0" y="0" width="40" height="40" preserveAspectRatio="xMidYMid slice" xlink:href="https://scontent.xx.fbcdn.net/v/t39.30808-1/me-40.png?stp=c0.0.40.40a_cp0_dst-jpg_s40x40&amp;oh=00_ABC"></image></g></svg></div></div>
+      <div role="dialog" aria-label="Your profile" class="xmenu" id="fx-account-menu" hidden>
+        <a role="link" tabindex="0" href="/me/"><span>Pat Example</span></a>
+        <div role="list" aria-label="Select an option">
+          <div role="listitem"><a href="/settings/"><span>Settings &amp; privacy</span></a></div>
+          <div role="listitem"><div role="button" tabindex="0" id="fx-logout" aria-label="Log out"><span>Log out</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="xmainwrap x1n2onr6 x1ja2u2z">
+<div class="xhome">
+<!--left-rail-->
+<div class="xleft">
+  <div role="navigation" aria-label="Shortcuts" class="xrail">
+    <div><div>
+      <h2 class="sr">Facebook menu</h2>
+      <div data-visualcompletion="ignore-dynamic">
+        <ul>
+          <li><div><div><div><a class="xrow" href="https://www.facebook.com/profile.php?id=100001234567890"><img src="https://scontent.xx.fbcdn.net/v/t39.30808-1/me-36.png?stp=dst-jpg_s36x36&amp;oh=00_DEF" alt=""><span><span>Pat Example</span></span></a></div></div></div></li>
+          <li><div><div><div><a class="xrow" href="https://l.facebook.com/l.php?u=https%3A%2F%2Fwww.meta.ai%2F&amp;h=AT0"><svg></svg><span>Meta AI</span></a></div></div></div></li>
+          <li><div><div><div><a class="xrow" href="https://www.facebook.com/friends/?ref=bookmarks"><svg></svg><span>Friends</span></a></div></div></div></li>
+          <li><div><div><div><a class="xrow" href="https://www.facebook.com/onthisday/?ref=bookmarks"><svg></svg><span>Memories</span></a></div></div></div></li>
+          <li><div><div><div><a class="xrow" href="https://www.facebook.com/saved/?ref=bookmarks"><svg></svg><span>Saved</span></a></div></div></div></li>
+          <li><div><div><div><a class="xrow" href="https://www.facebook.com/groups/?ref=bookmarks"><svg></svg><span>Groups</span></a></div></div></div></li>
+          <li><div><div><div><a class="xrow" href="https://www.facebook.com/marketplace/?ref=bookmark"><svg></svg><span>Marketplace</span></a></div></div></div></li>
+          <li><div><div><div><a class="xrow" href="https://www.facebook.com/?filter=all&amp;sk=h_chr"><svg></svg><span>Feeds</span></a></div></div></div></li>
+          <li><div><div><div><a class="xrow" href="https://www.facebook.com/events?ref=bookmarks"><svg></svg><span>Events</span></a></div></div></div></li>
+        </ul>
+        <div role="button" tabindex="0" aria-label="See more explore items"><span>See more</span></div>
+        <hr>
+        <h2><span>Your shortcuts</span></h2>
+        <ul>
+          <li><div><div><div><a class="xrow" href="https://www.facebook.com/groups/615000000000042/"><img src="https://scontent.xx.fbcdn.net/v/t39.30808-1/group-cyclists.png?stp=dst-jpg_s36x36" alt=""><span>Kraków Cyclists</span><span><span>12</span><span class="sr">12 new posts</span></span></a></div></div></div></li>
+          <li><div><div><div><a class="xrow" href="https://www.facebook.com/groups/gamingclub/"><img src="https://scontent.xx.fbcdn.net/v/t39.30808-1/group-gaming.png?stp=dst-jpg_s36x36" alt=""><span>Gaming Club</span></a></div></div></div></li>
+          <li><div><div><div><a class="xrow" href="https://www.facebook.com/groups/1234567890/?ref=bookmarks"><img src="https://scontent.xx.fbcdn.net/v/t39.30808-1/group-photo.png?stp=dst-jpg_s36x36" alt=""><span>Old School Photography</span></a></div></div></div></li>
+          <li><div><div><div><a class="xrow" href="https://www.facebook.com/examplebakery"><img src="https://scontent.xx.fbcdn.net/v/t39.30808-1/page-bakery.png?stp=dst-jpg_s36x36" alt=""><span>Example Bakery</span></a></div></div></div></li>
+        </ul>
+        <footer role="contentinfo" aria-label="Facebook"><ul><li><a href="/privacy/policy/">Privacy</a></li><li><a href="/policies?ref=pf">Terms</a></li><li><a href="/ad_campaign/landing.php?placement=pf">Advertising</a></li></ul></footer>
+      </div>
+    </div></div>
+  </div>
+</div>
+<!--/left-rail-->
+<div class="xcenter">
+  <h1 class="sr">Home</h1>
+  <div role="main">
+    <div></div>
+    <div role="region" aria-label="Create a post" class="xcard"><h3 class="sr">Create a post</h3><a href="https://www.facebook.com/profile.php?id=100001234567890" aria-label="Pat Example's timeline"></a><div role="button" tabindex="0">What's on your mind, Pat?</div></div>
+    <div role="region" aria-label="Stories"><div data-virtualized="false"><div><div role="region" data-focus-target="stories_tray" class="xcard" style="min-height:160px">Stories</div></div></div></div>
+    <div>
+      <h3 class="sr">Feed posts</h3>
+      <div aria-hidden="true"></div>
+      <div>
+        <div><div aria-posinset="1"><div><div data-virtualized="false"><div class="xcard xpost" id="fx-post-1">Post one — Kasia Nowak shared a photo.</div></div></div></div></div>
+        <div><div aria-posinset="2"><div><div data-virtualized="false"><div class="xcard xpost">Post two — Gaming Club: weekend meetup.</div></div></div></div></div>
+        <div><div aria-posinset="3"><div><div data-virtualized="false"><div class="xcard xpost">Post three — Example Bakery: fresh bread.</div></div></div></div></div>
+      </div>
+    </div>
+  </div>
+</div>
+<!--right-rail-->
+<div class="xright">
+  <div role="complementary" class="xrail">
+    <div>
+      <div>
+        <div><h3><span style="-webkit-box-orient:vertical">Sponsored</span></h3></div>
+        <div><a href="https://example-ad.test/?fbclid=1&amp;utm_medium=paid" target="rhcad3" rel="nofollow noreferrer external" aria-label="Advertiser Buy now example.test">Buy now</a><div role="button" aria-label="Open menu for Example sponsored content"></div></div>
+      </div>
+      <div>
+        <div><h3>Birthdays</h3></div>
+        <a href="/events/birthdays/" role="link"><div>Dasha Trofimova's birthday is today.</div></a>
+      </div>
+      <div>
+        <div><h3>Contacts</h3><div role="button" aria-label="Search for a name or group"></div><div role="button" aria-label="More options for contacts"></div></div>
+        <ul>
+          <li><a class="xrow" href="/messages/t/1000/" aria-label="Meta AI profile photo Meta AIVerified account"><svg><image href="https://scontent.xx.fbcdn.net/v/gen-ai/meta-ai.png"></image></svg><span>Meta AI</span></a></li>
+          <li><a class="xrow" href="/messages/t/1001/" aria-label="Petronella O'Negriezz, Active"><img src="https://scontent.xx.fbcdn.net/v/t39.30808-1/c1.png" alt=""><span>Petronella O'Negriezz</span></a></li>
+          <li><a class="xrow" href="/messages/t/1002/" aria-label="Tom Hellier, Active"><img src="https://scontent.xx.fbcdn.net/v/t39.30808-1/c2.png" alt=""><span>Tom Hellier</span></a></li>
+          <li><a class="xrow" href="/messages/t/1003/" aria-label="Ágnes Fülöp, Active"><img src="https://scontent.xx.fbcdn.net/v/t39.30808-1/c3.png" alt=""><span>Ágnes Fülöp</span></a></li>
+          <li><a class="xrow" href="/messages/t/1004/" aria-label="Ash Bainbridge, Active"><img src="https://scontent.xx.fbcdn.net/v/t39.30808-1/c4.png" alt=""><span>Ash Bainbridge</span></a></li>
+          <li><a class="xrow" href="/messages/t/1005/" aria-label="Matt Gorle"><img src="https://scontent.xx.fbcdn.net/v/t39.30808-1/c5.png" alt=""><span>Matt Gorle</span></a></li>
+          <li><a class="xrow" href="/messages/t/1006/" aria-label="Brian Pellot"><img src="https://scontent.xx.fbcdn.net/v/t39.30808-1/c6.png" alt=""><span>Brian Pellot</span></a></li>
+        </ul>
+      </div>
+      <div>
+        <div><h3>Group chats</h3></div>
+        <ul><li><div role="button" aria-label="Ela, Marcin and 9 others, last active 41w">Ela, Marcin and 9 others</div></li></ul>
+        <div role="button" aria-label="Create group chat"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<!--/right-rail-->
+</div>
+</div>
+
+<div class="xchat"><div role="button" aria-label="New message" tabindex="0"></div></div>
+</div>
+</div>
+</div>
+<div class="__fb-light-mode x1n2onr6 xzkaem6"><div class="xmodal" id="fx-portal" hidden><div role="dialog" aria-label="Create post" id="fx-dialog">Create post</div></div></div>
+<script>
+  // Stand-in for React's delegated handlers on the root container.
+  window.__fb = { clicks: [], logout: 0 };
+  document.getElementById("mount_0_0_Qx").addEventListener("click", function (e) {
+    var account = e.target.closest('#fx-account');
+    if (account) {
+      var menu = document.getElementById("fx-account-menu");
+      menu.hidden = !menu.hidden;
+      account.setAttribute("aria-expanded", String(!menu.hidden));
+      return;
+    }
+    if (e.target.closest("#fx-logout")) { window.__fb.logout++; return; }
+    var a = e.target.closest("a[href]");
+    if (!a || a.target) return;
+    e.preventDefault();
+    window.__fb.clicks.push(a.getAttribute("href"));
+    history.pushState({ key: "state-key-" + Date.now() }, "", a.href);
+  });
+</script>
+</body>
+</html>

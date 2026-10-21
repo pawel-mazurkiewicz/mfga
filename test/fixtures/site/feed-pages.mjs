@@ -24,24 +24,26 @@ export function decodeCursor(cursor) {
 
 /**
  * feedPage(world, "friends", { offset, size, ctx }) ->
- *   { edges, pageInfo: { endCursor, hasNextPage }, organicIds, junkIds }
+ *   { edges, pageInfo: { endCursor, hasNextPage }, organicIds, junkIds, items }
+ * items mirrors edges: { story } for organic edges, { junk, instance } for junk.
  * ctx: { scale, obfuscateCategory } for the shape builders.
  */
 export function feedPage(world, feedName, { offset = 0, size = 4, ctx }) {
   const ids = world.feed(feedName);
   const organic = ids.slice(offset, offset + size).map((id) => world.story(id));
   const edges = organic.map((story, i) => organicEdge(world, story, ctx, encodeCursor(feedName, offset + i + 1), { engagement: feedName === "top" && world.engagement.has(story.postId) }));
+  const items = organic.map((story) => ({ story }));
   const plan = junkPlan(world, feedName, Math.floor(offset / Math.max(1, size)), organic.length);
-  const junkIds = [];
   for (const item of plan) {
     edges.splice(item.position, 0, junkEdge(world, item, ctx, encodeCursor(feedName, offset + Math.min(item.position, organic.length))));
-    junkIds.push(item.instance);
+    items.splice(item.position, 0, item);
   }
   const next = offset + organic.length;
   return {
     edges,
     pageInfo: { endCursor: organic.length ? encodeCursor(feedName, next) : null, hasNextPage: next < ids.length },
     organicIds: organic.map((s) => s.postId),
-    junkIds,
+    junkIds: plan.map((item) => item.instance),
+    items,
   };
 }

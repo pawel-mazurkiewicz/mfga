@@ -4,7 +4,7 @@ import { h } from "../dom.js";
 import { t } from "../../shared/i18n.js";
 import { guard, linkButton } from "./parts.js";
 
-export const PROJECT_URL = "https://github.com/pawel-mazurkiewicz/mfga#readme";
+const PROJECT_URL = "https://github.com/pawel-mazurkiewicz/mfga#readme";
 
 const block = (cls) => h("i", { class: `mfga-welcome-block ${cls}` });
 const marker = (n, cls) => h("b", { class: `mfga-welcome-marker ${cls}` }, String(n));

@@ -25,7 +25,7 @@ registerStrings({
     "feed.welcome.title": "Welcome back to your old home page.",
     "feed.welcome.close": "close",
     "feed.welcome.step1": "See only posts from your friends, groups and pages. Ads and suggested posts are hidden.",
-    "feed.welcome.step2": "Switch between Top News and Most Recent above the stream. Most Recent shows everything, newest first.",
+    "feed.welcome.step2": "Switch between Top News and Most Recent above the stream; Most Recent is newest first.",
     "feed.welcome.step3": "Choose what you see and how Facebook looks in MFGA Settings, in the Account menu above.",
     "feed.welcome.learn": "Learn more about Make Facebook Great Again",
 
@@ -98,7 +98,7 @@ registerStrings({
     "feed.welcome.title": "Witaj ponownie na swojej starej stronie głównej.",
     "feed.welcome.close": "zamknij",
     "feed.welcome.step1": "Widzisz tylko posty znajomych, grup i stron. Reklamy i sugerowane posty są ukryte.",
-    "feed.welcome.step2": "Przełączaj między Najciekawszymi a Najnowszymi nad listą postów. Najnowsze pokazują wszystko, od najnowszych.",
+    "feed.welcome.step2": "Przełączaj Najciekawsze i Najnowsze nad listą postów; Najnowsze są od najnowszych.",
     "feed.welcome.step3": "Wybierz, co widzisz i jak wygląda Facebook, w Ustawieniach MFGA w menu Konto powyżej.",
     "feed.welcome.learn": "Dowiedz się więcej o Make Facebook Great Again",
 

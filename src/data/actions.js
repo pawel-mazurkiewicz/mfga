@@ -4,6 +4,7 @@
 
 import { health, uuid as realUuid, warn } from "../shared/util.js";
 import { extractComment as realExtractComment } from "./extract.js";
+import { errorKind } from "./gql.js";
 import { runOp } from "./ops.js";
 
 export const REACTIONS = Object.freeze({
@@ -157,6 +158,14 @@ function referrerOf(url) {
   }
 }
 
+/**
+ * A response without the field we asked for, next to GraphQL errors, is a failed request whose errors gql.js
+ * passed through as non-critical (unknown codes with partial data). Its kind is the first error's.
+ */
+function failedKind(res, payload) {
+  return payload == null && res.errors?.length ? errorKind(res.errors[0]?.code) : null;
+}
+
 /** The viewer's reaction after the mutation, from the echo when it carries one. */
 function echoedReaction(feedback, requested) {
   if (isObject(feedback) && "viewer_feedback_reaction_info" in feedback) {
@@ -165,8 +174,6 @@ function echoedReaction(feedback, requested) {
   }
   return requested === REACTIONS.NONE ? null : requested;
 }
-
-const errorName = (err) => err?.kind || "error";
 
 /**
  * createActions({ client, ops, harvest }) -> { react, comment, comments, can }
@@ -181,6 +188,7 @@ export function createActions({ client, ops, harvest, extractComment = realExtra
     async react(story, reactionId) {
       const feedbackId = story?.feedback?.id;
       if (!feedbackId) return { ok: false, error: "no-feedback" };
+      if (!/^\d+$/.test(String(reactionId))) return { ok: false, error: "bad-reaction" };
       try {
         const res = await runOp({ client, ops }, ACTION_OPS.react, (op) =>
           reactVariables(op.variables?.input ? op.variables : reactTemplate(ids), {
@@ -194,6 +202,8 @@ export function createActions({ client, ops, harvest, extractComment = realExtra
           }),
         );
         if (!res) return { ok: false, error: "unavailable" };
+        const failed = failedKind(res, res.data?.feedback_react);
+        if (failed) return failure("react", { kind: failed });
         health.count("actions.react");
         const feedback = res.data?.feedback_react?.feedback;
         const count = feedback?.reaction_count?.count;
@@ -223,7 +233,7 @@ export function createActions({ client, ops, harvest, extractComment = realExtra
         );
         if (!res) return { ok: false, error: "unavailable" };
         const created = res.data?.comment_create;
-        if (!created) return { ok: false, error: "no-echo" };
+        if (!created) return { ok: false, error: failedKind(res, created) ?? "no-echo" };
         health.count("actions.comment");
         const node = created.feedback_comment_edge?.node;
         const echoed = node ? extractComment(node) : null;
@@ -241,6 +251,8 @@ export function createActions({ client, ops, harvest, extractComment = realExtra
         const res = await runOp({ client, ops }, ACTION_OPS.comments, (op) => commentsVariables(op.variables, { feedbackId, cursor }));
         if (!res) return { ...empty, error: "unavailable" };
         const connection = res.data?.node?.comment_rendering_instance_for_feed_location?.comments;
+        const failed = failedKind(res, connection);
+        if (failed) return { ...failure("comments", { kind: failed }), comments: [], cursor: cursor ?? null, hasMore: false };
         const comments = (Array.isArray(connection?.edges) ? connection.edges : []).map((e) => (e?.node ? extractComment(e.node) : null)).filter(Boolean);
         const info = connection?.page_info;
         return { ok: true, comments, cursor: info?.end_cursor ?? null, hasMore: info?.has_next_page === true };
@@ -272,6 +284,6 @@ export function createActions({ client, ops, harvest, extractComment = realExtra
   function failure(action, err) {
     health.count(`actions.${action}.failed`);
     if (!err?.kind) warn(`${action} failed`, err);
-    return { ok: false, error: errorName(err) };
+    return { ok: false, error: err?.kind || "error" };
   }
 }

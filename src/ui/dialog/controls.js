@@ -37,7 +37,6 @@ export function createBinder(settings) {
   }
 
   return {
-    apply,
     onSync,
 
     sync(s = settings.get()) {
@@ -112,20 +111,26 @@ export function createBinder(settings) {
       return select;
     },
 
-    /** Textarea holding a string list, one item per line; saved after a pause in typing and on blur. */
-    listTextarea(path, attrs = {}) {
+    /**
+     * Textarea for a keyword list, one phrase per line: saved after a pause in typing and on blur, when the
+     * text is also tidied to what was saved.
+     */
+    keywordList(path, attrs = {}) {
       const textarea = h("textarea.mfga-textarea", { rows: 4, spellcheck: "false", dataset: { mfgaSetting: path }, ...attrs });
       let timer = 0;
       const commit = () => {
         clearTimeout(timer);
         const next = parseKeywords(textarea.value);
         if (!sameList(next, read(settings.get(), path) || [])) apply(patchFor(path, next));
+        return next;
       };
       textarea.addEventListener("input", () => {
         clearTimeout(timer);
         timer = setTimeout(commit, KEYWORDS_DELAY_MS);
       });
-      textarea.addEventListener("change", commit);
+      textarea.addEventListener("blur", () => {
+        textarea.value = formatKeywords(commit());
+      });
       flushers.push(commit);
       onSync((s) => {
         if (document.activeElement !== textarea) textarea.value = formatKeywords(read(s, path));

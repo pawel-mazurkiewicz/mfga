@@ -109,8 +109,8 @@ const shot = (page, target, name) => page.screenshot({ path: path.join(SHOTS, `$
 const assertNoPageErrors = (page) => assert.deepEqual(page.__errors || [], []);
 
 /** Opens a fresh browser with the product loaded, runs fn, always closes. */
-async function withProduct(target, siteOpts, fn) {
-  const p = await launchProduct(target, { now: fixtureNow(), ...siteOpts });
+async function withProduct(target, siteOpts, fn, launchOpts) {
+  const p = await launchProduct(target, { now: fixtureNow(), ...siteOpts }, launchOpts);
   try {
     await fn(p);
   } finally {
@@ -352,6 +352,21 @@ for (const [target, available, distPath] of TARGETS) {
         await waitForStories(page, 3);
         assertNoPageErrors(page);
       });
+    });
+
+    test("a userscript started before <html> exists still boots the 2010 page", { timeout: TIMEOUT, skip: target !== "userscript" }, async () => {
+      await withProduct(
+        target,
+        {},
+        async ({ open }) => {
+          const page = await open("/");
+          await waitForStories(page, 3);
+          await page.waitForFunction(() => document.documentElement.getAttribute("data-mfga-route") === "home", null, { timeout: 15000 });
+          assert.ok(await shellShown(page), "the 2010 shell is visible");
+          assertNoPageErrors(page);
+        },
+        { timing: "earliest" },
+      );
     });
 
     test("a checkpoint answer stops every further request", { timeout: TIMEOUT }, async () => {

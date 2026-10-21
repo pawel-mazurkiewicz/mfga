@@ -53,19 +53,27 @@ export function gmShim({ name = "MFGA", version = "0.0.0" } = {}) {
 })();`;
 }
 
-/** Init-script source running `userscript` at document-start in top-level facebook.com frames only (@noframes). */
-export function userscriptInit(source, opts) {
-  return `if (window.top === window && location.hostname === "www.facebook.com") {\n${gmShim(opts)}\n${source}\n}`;
+/**
+ * Init-script source running a userscript in top-level facebook.com frames only (@noframes).
+ * timing "document-element" (default) starts it once <html> exists, like Chrome's document_start for
+ * extensions and userscript managers; "earliest" starts it before <html> exists, the earliest a manager
+ * can inject (MFGA must cope: ARCHITECTURE / util.onRoot).
+ */
+export function userscriptInit(source, { timing = "document-element", ...opts } = {}) {
+  const run = `const __run = () => {\n${source}\n};`;
+  const start = timing === "earliest" ? "__run();" : `if (document.documentElement) __run(); else new MutationObserver((_, mo) => { if (document.documentElement) { mo.disconnect(); __run(); } }).observe(document, { childList: true });`;
+  return `if (window.top === window && location.hostname === "www.facebook.com") {\n${gmShim(opts)}\n${run}\n${start}\n}`;
 }
 
 /**
- * launchProduct("userscript" | "extension", siteOpts, { viewport }) -> { b, site, open(path), close() }.
- * siteOpts go to installSite (locale, now, fetchSize, delayMs, …).
+ * launchProduct("userscript" | "extension", siteOpts, { viewport, timing }) -> { b, site, open(path), close() }.
+ * siteOpts go to installSite (locale, now, fetchSize, delayMs, …); timing is the userscript start (see
+ * userscriptInit).
  */
-export async function launchProduct(target, siteOpts = {}, { viewport } = {}) {
+export async function launchProduct(target, siteOpts = {}, { viewport, timing } = {}) {
   const b = await launchBrowser(target === "extension" ? { extensionPath: DIST.extension, viewport } : { viewport });
   const site = await installSite(b, siteOpts);
-  if (target === "userscript") await b.context.addInitScript({ content: userscriptInit(readFileSync(DIST.userscript, "utf8")) });
+  if (target === "userscript") await b.context.addInitScript({ content: userscriptInit(readFileSync(DIST.userscript, "utf8"), { timing }) });
   return {
     b,
     site,

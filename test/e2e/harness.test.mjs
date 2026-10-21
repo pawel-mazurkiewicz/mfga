@@ -537,13 +537,15 @@ fetch("/api/graphql/", { method: "POST", headers: { "content-type": "application
     }
   });
 
-  test("userscript init script: GM_* values persist across navigations", async () => {
+  test("userscript init script: start timings, and GM_* values persist across navigations", async () => {
     const ub = await launchBrowser();
     try {
       const uSite = await installSite(ub);
-      await ub.context.addInitScript({ content: userscriptInit(`GM_setValue("visits", GM_getValue("visits", 0) + 1); window.__visits = GM_getValue("visits");`) });
+      await ub.context.addInitScript({ content: userscriptInit(`GM_setValue("visits", GM_getValue("visits", 0) + 1); window.__visits = GM_getValue("visits"); window.__rootAtStart = !!document.documentElement;`) });
+      await ub.context.addInitScript({ content: userscriptInit(`window.__earliestRootAtStart = !!document.documentElement; window.__ranBeforePage = typeof window.requireLazy === "undefined";`, { timing: "earliest" }) });
       const page = await ub.newPage({ url: uSite.url("/") });
       assert.equal(await page.evaluate(() => window.__visits), 1);
+      assert.deepEqual(await page.evaluate(() => [window.__rootAtStart, window.__earliestRootAtStart, window.__ranBeforePage]), [true, false, true]);
       await page.goto(uSite.url("/groups/feed/"));
       assert.equal(await page.evaluate(() => [window.__visits, typeof GM.getValue, GM_info.scriptHandler].join()), "2,function,Tampermonkey");
       assert.deepEqual(page.__errors || [], []);

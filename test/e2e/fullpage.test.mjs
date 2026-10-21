@@ -104,7 +104,18 @@ function assertFeedVariables(entries) {
   }
 }
 
-const shot = (page, target, name) => page.screenshot({ path: path.join(SHOTS, `${target}-${name}.png`), fullPage: true });
+/** Full-page screenshot after scrolling through once, so lazy-loaded images are in the picture. */
+async function shot(page, target, name) {
+  await page.evaluate(async () => {
+    for (let y = 0; y < document.documentElement.scrollHeight; y += innerHeight) {
+      scrollTo(0, y);
+      await new Promise((r) => setTimeout(r, 80));
+    }
+    scrollTo(0, 0);
+  });
+  await page.waitForFunction(() => [...document.images].every((img) => img.complete), null, { timeout: 5000 }).catch(() => {});
+  await page.screenshot({ path: path.join(SHOTS, `${target}-${name}.png`), fullPage: true });
+}
 
 const assertNoPageErrors = (page) => assert.deepEqual(page.__errors || [], []);
 

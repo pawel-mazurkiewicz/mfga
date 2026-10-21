@@ -112,6 +112,20 @@ navigation to `/` so the next load carries a preloader. A doc_id from the probe 
 sent with the newest variables template known (`src/data/ops.js`), so a deploy alone rarely gets that far. After a
 checkpoint halt a `.mfga-notice` on Home says why Facebook's feed is back.
 
+The combined feed does not need the 2010 layout: with `look.shell` off, `#mfga-stream` goes into Facebook's
+own home `[role="main"]` (found by role, never one inside a dialog) and the rest of Facebook's page stays.
+
+Leaving and coming back (`src/main.js`):
+* A photo opened over Home or the groups feed is a push view: the URL changes but Facebook keeps the page
+  mounted under its viewer. While a push view (`pushViewOpen()`, a wide centred dialog) is open, main keeps
+  the previous route on screen for the layout, the shell, the cleaner and our stream. Comet shows the viewer
+  a moment after the URL changes, so main looks again 150, 400, 800 and 1500 ms later and puts Home back if
+  the viewer shows up; a viewer gone for two remount ticks without a URL change hands over to the URL's route.
+* Away from Home the stream is detached but kept (same feed signature, same stories, no request). Back on
+  Home it is re-attached at once, and after Back/Forward (a trusted `popstate`) or a push view the window is
+  scrolled to where the reader was, re-asserted for 2 s while Facebook re-renders the column, until the
+  reader scrolls, clicks or types. A "News Feed" click comes back at the top, as 2010's did.
+
 ### 3.2 Story model (`src/data/extract.js`)
 
 ```js
@@ -177,6 +191,9 @@ built-in 2026-09 template with ids replaced.
   cache), route-gated Follow/Join/Add-friend in the first heading, Reels grid, Stories tray
   (`data-focus-target="stories_tray"`), People You May Know, group suggestions, Meta AI. Hides by marking
   the unit's first child `data-mfga-hide` and a `:has()` rule. Never within 1200 px of the page bottom.
+  With the ads setting it also hides the right column's "Sponsored" block, found without words: the widest
+  block in `[role=complementary]` around the `rhcadN` / privacy-sandbox ad links that holds no other link
+  and no second heading (it only shows when the 2010 layout, which replaces that column, is off).
 * `src/fb/skin.js` — tags parts of native posts (`data-mfga-part="avatar|name|message|actions|..."`) so
   the 2010 stylesheet can restyle them (square 50px avatars, blue bold names, text-link action bar,
   #EDEFF4 comment area).

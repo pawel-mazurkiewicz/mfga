@@ -1432,6 +1432,7 @@ ${S2} .mfga-chat-tab:hover{background:linear-gradient(#FFF,#E5E5E5)}
 .mfga-stream .mfga-welcome-steps{flex:1;min-width:0;margin:6px 0 0;padding:0;list-style:none}
 .mfga-welcome-step{display:flex;align-items:flex-start;margin:0 0 10px;line-height:14px}
 .mfga-welcome-step:last-child{margin-bottom:0}
+html[data-mfga-shell] .mfga-welcome-plain,html:not([data-mfga-shell]) .mfga-welcome-shell{display:none}
 .mfga-welcome-num{flex:none;width:15px;height:16px;margin-right:8px;background:#A6B2CA;color:#fff;font-weight:bold;line-height:16px;text-align:center}
 .mfga-welcome-learn{display:inline-block;margin-top:12px;font-size:13px;font-weight:bold;line-height:16px}
 .mfga-welcome-arrow{display:inline-block;width:0;height:0;margin:0 0 2px 5px;border-left:4px solid ${BLUE};border-top:4px solid transparent;border-bottom:4px solid transparent;vertical-align:middle}
@@ -4796,6 +4797,7 @@ ${docId}`;
   var HIDE_ATTR = "data-mfga-hide";
   var BOTTOM_GUARD_PX = 1200;
   var STORIES_SELECTOR = '[data-focus-target="stories_tray"]';
+  var RAIL_AD_LINK = 'a[target^="rhcad"], a[attributionsrc*="/privacy_sandbox/"]';
   var MAX_TRIES = 8;
   var XLINK = "http://www.w3.org/1999/xlink";
   var REASON_SETTINGS = {
@@ -5071,6 +5073,20 @@ ${docId}`;
     }
     return blocks;
   }
+  function railAdBlocks(node) {
+    const blocks = /* @__PURE__ */ new Set();
+    for (const a of selfAndBelow(node, RAIL_AD_LINK)) {
+      const rail = a.closest('[role="complementary"]');
+      if (!rail) continue;
+      let block3 = a;
+      for (let el = a.parentElement; el && el !== rail; el = el.parentElement) {
+        if (el.querySelectorAll("h3").length > 1 || [...el.querySelectorAll("a[href]")].some((x) => !x.matches(RAIL_AD_LINK))) break;
+        block3 = el;
+      }
+      blocks.add(block3);
+    }
+    return [...blocks];
+  }
   function observedLabels(unit) {
     const button = (role) => unit.querySelector(`[data-ad-rendering-role="${role}"]`)?.closest('[role="button"]')?.getAttribute("aria-label");
     return {
@@ -5097,6 +5113,7 @@ ${docId}`;
     const pending = /* @__PURE__ */ new Set();
     const dirtyUnits = /* @__PURE__ */ new Set();
     const dirtyBlocks = /* @__PURE__ */ new Set();
+    const dirtyRailAds = /* @__PURE__ */ new Set();
     const stats = { seen: 0, hidden: 0, skeletons: 0, virtualized: 0, undecodable: 0, reasons: {}, signals: {}, probe: {} };
     let statsTimer = 0;
     function snapshot() {
@@ -5133,7 +5150,7 @@ ${docId}`;
       touch();
     }
     function blockedOwners(decisions) {
-      const owners = new Set(decisions.filter((d) => d.verdict && d.target && !d.target.hasAttribute(HIDE_ATTR)).map((d) => d.owner));
+      const owners = new Set(decisions.filter((d) => d.verdict && d.target && !d.unguarded && !d.target.hasAttribute(HIDE_ATTR)).map((d) => d.owner));
       if (!owners.size) return owners;
       const docHeight = doc.documentElement.scrollHeight;
       const top = window.scrollY;
@@ -5215,11 +5232,18 @@ ${docId}`;
       if (outer && isStoriesRegion(outer) && !outer.querySelector(UNIT_SELECTOR)) decisions.push({ owner: block3, target: outer, verdict, counts: false });
       return decisions;
     }
+    function processRailAd(block3) {
+      if (!block3.isConnected) return null;
+      const verdict = chooseVerdict([{ reason: "sponsored", signal: "rail" }], current(), feedRoute);
+      if (verdict && !block3.hasAttribute(HIDE_ATTR)) health.count("clean.rail-ad");
+      return { owner: block3, target: block3, verdict, counts: false, unguarded: true };
+    }
     function collect(node) {
       if (node.nodeType !== 1) return;
       cache.capture(node);
       for (const u of node.matches(UNIT_SELECTOR) ? [node] : node.querySelectorAll(UNIT_SELECTOR)) dirtyUnits.add(u);
       for (const b of storyBlocks(node)) dirtyBlocks.add(b);
+      for (const b of railAdBlocks(node)) dirtyRailAds.add(b);
     }
     const flush = rafBatch(
       safe("cleaner", () => {
@@ -5234,8 +5258,13 @@ ${docId}`;
           if (d) decisions.push(d);
         }
         for (const b of dirtyBlocks) decisions.push(...processBlock(b));
+        for (const b of dirtyRailAds) {
+          const d = processRailAd(b);
+          if (d) decisions.push(d);
+        }
         dirtyUnits.clear();
         dirtyBlocks.clear();
+        dirtyRailAds.clear();
         commit(decisions);
       })
     );
@@ -5255,6 +5284,7 @@ ${docId}`;
     function reapplyAll() {
       for (const unit of doc.querySelectorAll(UNIT_SELECTOR)) dirtyUnits.add(unit);
       for (const block3 of storyBlocks(doc.body)) dirtyBlocks.add(block3);
+      for (const block3 of railAdBlocks(doc.body)) dirtyRailAds.add(block3);
       flush();
     }
     const unsubscribe = typeof settings?.subscribe === "function" ? settings.subscribe(() => reapplyAll()) : null;
@@ -5281,6 +5311,7 @@ ${docId}`;
         pending.clear();
         dirtyUnits.clear();
         dirtyBlocks.clear();
+        dirtyRailAds.clear();
         for (const el of doc.querySelectorAll(`[${HIDE_ATTR}]`)) el.removeAttribute(HIDE_ATTR);
       },
       stats: snapshot
@@ -6139,6 +6170,7 @@ ${docId}`;
       "feed.welcome.step1": "See only posts from your friends, groups and pages. Ads and suggested posts are hidden.",
       "feed.welcome.step2": "Switch between Top News and Most Recent above the stream; Most Recent is newest first.",
       "feed.welcome.step3": "Choose what you see and how Facebook looks in MFGA Settings, in the Account menu above.",
+      "feed.welcome.step3Plain": "Choose what you see and how Facebook looks in MFGA Settings: the MFGA toolbar button, or your userscript manager's menu.",
       "feed.welcome.learn": "Learn more about Make Facebook Great Again",
       "story.and": " and ",
       "story.to": "to",
@@ -6210,6 +6242,7 @@ ${docId}`;
       "feed.welcome.step1": "Widzisz tylko posty znajomych, grup i stron. Reklamy i sugerowane posty są ukryte.",
       "feed.welcome.step2": "Przełączaj Najciekawsze i Najnowsze nad listą postów; Najnowsze są od najnowszych.",
       "feed.welcome.step3": "Wybierz, co widzisz i jak wygląda Facebook, w Ustawieniach MFGA w menu Konto powyżej.",
+      "feed.welcome.step3Plain": "Wybierz, co widzisz i jak wygląda Facebook, w Ustawieniach MFGA: przycisk MFGA na pasku narzędzi albo menu menedżera skryptów.",
       "feed.welcome.learn": "Dowiedz się więcej o Make Facebook Great Again",
       "story.and": " i ",
       "story.to": "do",
@@ -7068,7 +7101,8 @@ ${docId}`;
     );
   }
   function renderWelcome({ onClose, open }) {
-    const steps = [1, 2, 3].map((n) => h("li.mfga-welcome-step", h("b.mfga-welcome-num", String(n)), h("span", t(`feed.welcome.step${n}`))));
+    const where = [h("span.mfga-welcome-shell", t("feed.welcome.step3")), h("span.mfga-welcome-plain", t("feed.welcome.step3Plain"))];
+    const steps = [1, 2, 3].map((n) => h("li.mfga-welcome-step", h("b.mfga-welcome-num", String(n)), n === 3 ? where : h("span", t(`feed.welcome.step${n}`))));
     const box2 = h(
       "div.mfga-welcome",
       h("div.mfga-welcome-head", h("h2.mfga-welcome-title", t("feed.welcome.title")), linkButton(t("feed.welcome.close"), close, "mfga-welcome-close")),
@@ -8244,6 +8278,10 @@ ${docId}`;
   var TRANSIENT_KINDS = /* @__PURE__ */ new Set(["network", "server", "rate", "soft-block", "token"]);
   var LAST_SEEN_KEY = "mfga:lastSeen";
   var SIGNED_IN_COOKIE = /(?:^|;\s*)(?:c_user|i_user)=\d+/;
+  var PUSH_VIEW_CHECKS_MS = [150, 400, 800, 1500];
+  var RETURN_SETTLE_MS = 2e3;
+  var TRAVERSAL_MS = 1e3;
+  var HOME_PATH = /^\/(home\.php)?$/;
   var COMPOSER_SELECTORS = ['[role="region"][aria-label="Create a post"] [role="button"]', '[role="region"][aria-label="Utwórz post"] [role="button"]'];
   registerStrings({
     en: {
@@ -8259,6 +8297,7 @@ ${docId}`;
       "main.halted": "MFGA wstrzymało własne zapytania, bo Facebook poprosił o weryfikację konta. Sam Facebook działa normalnie."
     }
   });
+  var FEED_COLUMN = '[data-mfga-main], html:not([data-mfga-shell]) [role="main"]:not([role="dialog"] *)';
   function buildCss(settings) {
     return [
       baseCss(settings),
@@ -8269,9 +8308,10 @@ ${docId}`;
       shellCss(settings),
       streamCss(settings),
       // Our News Feed replaces Facebook's home column; "pending" keeps Facebook's column invisible (but laid
-      // out) while we decide, so there is no flash of the 2026 feed.
-      'html[data-mfga-feed="ours"] [data-mfga-main]>:not(#mfga-stream){display:none!important}',
-      'html[data-mfga-feed="pending"] [data-mfga-main]>:not(#mfga-stream){visibility:hidden!important}',
+      // out) while we decide, so there is no flash of the 2026 feed. Without the 2010 layout nobody marks the
+      // column, so it is found by its role (never one inside a dialog, such as a photo viewer's).
+      `html[data-mfga-feed="ours"] :is(${FEED_COLUMN})>:not(#mfga-stream){display:none!important}`,
+      `html[data-mfga-feed="pending"] :is(${FEED_COLUMN})>:not(#mfga-stream){visibility:hidden!important}`,
       'html:not([data-mfga-feed="ours"]) #mfga-stream{display:none!important}'
     ].join("\n");
   }
@@ -8399,6 +8439,10 @@ ${docId}`;
     let feedBroken = false;
     let homeNeedsReload = false;
     let haltNotice = null;
+    let pushBase = null;
+    let pushGoneTicks = 0;
+    let homeY = 0;
+    let lastTraversal = -Infinity;
     const shellNavigator = {
       go(url, opts) {
         let home = false;
@@ -8554,7 +8598,7 @@ ${docId}`;
     }
     async function canUseOurFeed() {
       if (!client || !ops || client.halted) return false;
-      if (!S3().look.shell || signedOut || !harvest.tokens.userId) return false;
+      if (signedOut || !harvest.tokens.userId) return false;
       const op = feedBroken ? null : await ops.get(FEED_QUERY).catch(() => null);
       homeNeedsReload = !op?.variables;
       return !homeNeedsReload;
@@ -8609,6 +8653,12 @@ ${docId}`;
       () => {
         if (route.mode === "home" && document.documentElement.getAttribute("data-mfga-feed") === "ours") mountFeed();
         mountHaltNotice();
+        pushGoneTicks = pushBase && !pushViewOpen() ? pushGoneTicks + 1 : 0;
+        if (pushGoneTicks >= 2) {
+          pushBase = null;
+          pushGoneTicks = 0;
+          showRoute(classifyRoute());
+        }
       },
       { disableOnError: false }
     );
@@ -8621,16 +8671,64 @@ ${docId}`;
       { disableOnError: false }
     );
     function onRoute(next) {
+      const base = pushBase || route;
+      const fromFeed = base.mode === "home" || base.mode === "groups-feed";
+      if (next.mode === "page" && fromFeed && pushViewOpen()) return keepUnderPushView(base);
+      pushBase = null;
+      showRoute(next, { restore: performance.now() - lastTraversal < TRAVERSAL_MS });
+      if (next.mode === "page" && fromFeed) watchForPushView(base);
+    }
+    function showRoute(next, { restore = false } = {}) {
+      const returning = next.mode === "home" && route.mode !== "home";
       route = next;
       applyRootAttributes(S3());
       layout.apply(route);
       shell?.update?.({ route });
       cleaner?.setRoute?.(route);
-      if (route.mode !== "home") {
-        feedView?.el?.remove();
-      }
+      if (route.mode !== "home") feedView?.el?.remove();
       mountHaltNotice();
-      syncFeed();
+      const view = feedView;
+      Promise.resolve(syncFeed()).then(() => {
+        if (returning && view && feedView === view) settleReturn(restore ? homeY : 0);
+      });
+    }
+    function keepUnderPushView(base) {
+      const relayout = route !== base;
+      pushBase = base;
+      pushGoneTicks = 0;
+      if (relayout) showRoute(base, { restore: true });
+    }
+    function watchForPushView(base) {
+      const key = routeKey();
+      for (const ms of PUSH_VIEW_CHECKS_MS) {
+        setTimeout(() => {
+          if (!pushBase && routeKey() === key && pushViewOpen()) keepUnderPushView(base);
+        }, ms);
+      }
+    }
+    function settleReturn(y) {
+      const until = performance.now() + RETURN_SETTLE_MS;
+      const inputs = ["wheel", "touchstart", "keydown", "mousedown"];
+      let stopped = false;
+      const stop = () => {
+        stopped = true;
+      };
+      for (const type of inputs) addEventListener(type, stop, { capture: true, passive: true });
+      const step = () => {
+        if (stopped || route.mode !== "home" || performance.now() > until) {
+          for (const type of inputs) removeEventListener(type, stop, true);
+          return;
+        }
+        remount();
+        const room = document.documentElement.scrollHeight - innerHeight;
+        if (y > 0 && feedView?.el?.isConnected && Math.abs(scrollY - y) > 1 && room >= y) scrollTo(0, y);
+        requestAnimationFrame(step);
+      };
+      requestAnimationFrame(step);
+    }
+    function trackHomeScroll() {
+      if (route.mode !== "home" || pushBase || !HOME_PATH.test(location.pathname)) return;
+      if (feedView?.el?.isConnected && document.documentElement.getAttribute("data-mfga-feed") === "ours") homeY = scrollY;
     }
     function ensureShell() {
       if (shell || signedOut || !S3().look.shell) return;
@@ -8655,6 +8753,10 @@ ${docId}`;
       ensureShell();
       cleaner = safe("cleaner", () => startCleaner({ settings, route }))();
       skin = safe("skin", () => startSkin({ settings }))();
+      addEventListener("popstate", (ev) => {
+        if (ev.isTrusted) lastTraversal = performance.now();
+      });
+      addEventListener("scroll", trackHomeScroll, { passive: true });
       onRouteChange((next) => onRoute(next));
       harvest?.ready?.then?.(persistPreloader);
       persistPreloader();

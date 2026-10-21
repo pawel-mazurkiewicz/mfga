@@ -15,6 +15,8 @@ export const UNIT_SELECTOR = "[aria-posinset]:not([role])";
 export const HIDE_ATTR = "data-mfga-hide";
 export const BOTTOM_GUARD_PX = 1200;
 const STORIES_SELECTOR = '[data-focus-target="stories_tray"]';
+// Right-column ads (dom-feed §4.1.9): the rhcadN link target and the privacy-sandbox attribution source.
+const RAIL_AD_LINK = 'a[target^="rhcad"], a[attributionsrc*="/privacy_sandbox/"]';
 const MAX_TRIES = 8; // detection passes on one mounted subtree that still lacks a decodable header
 const XLINK = "http://www.w3.org/1999/xlink";
 
@@ -384,6 +386,26 @@ function storyBlocks(node) {
   return blocks;
 }
 
+/**
+ * Facebook's right-column "Sponsored" block around each ad link in `node`: the widest ancestor inside
+ * [role=complementary] that holds no link but ads and at most one heading (its own). Locale-free; the 2010
+ * layout replaces that column anyway, so this matters when the layout is off.
+ */
+export function railAdBlocks(node) {
+  const blocks = new Set();
+  for (const a of selfAndBelow(node, RAIL_AD_LINK)) {
+    const rail = a.closest('[role="complementary"]');
+    if (!rail) continue;
+    let block = a;
+    for (let el = a.parentElement; el && el !== rail; el = el.parentElement) {
+      if (el.querySelectorAll("h3").length > 1 || [...el.querySelectorAll("a[href]")].some((x) => !x.matches(RAIL_AD_LINK))) break;
+      block = el;
+    }
+    blocks.add(block);
+  }
+  return [...blocks];
+}
+
 function observedLabels(unit) {
   const button = (role) => unit.querySelector(`[data-ad-rendering-role="${role}"]`)?.closest('[role="button"]')?.getAttribute("aria-label");
   return {
@@ -418,6 +440,7 @@ export function startCleaner({ settings, route, onStats } = {}) {
   const pending = new Set();
   const dirtyUnits = new Set();
   const dirtyBlocks = new Set();
+  const dirtyRailAds = new Set();
   const stats = { seen: 0, hidden: 0, skeletons: 0, virtualized: 0, undecodable: 0, reasons: {}, signals: {}, probe: {} };
   let statsTimer = 0;
 
@@ -466,7 +489,7 @@ export function startCleaner({ settings, route, onStats } = {}) {
    * itself, so collapsing it cannot bring the one above within the guard.)
    */
   function blockedOwners(decisions) {
-    const owners = new Set(decisions.filter((d) => d.verdict && d.target && !d.target.hasAttribute(HIDE_ATTR)).map((d) => d.owner));
+    const owners = new Set(decisions.filter((d) => d.verdict && d.target && !d.unguarded && !d.target.hasAttribute(HIDE_ATTR)).map((d) => d.owner));
     if (!owners.size) return owners;
     const docHeight = doc.documentElement.scrollHeight;
     const top = window.scrollY;
@@ -568,11 +591,20 @@ export function startCleaner({ settings, route, onStats } = {}) {
     return decisions;
   }
 
+  /** A right-column ad block: hidden with the ads setting, not counted (it is not in the feed), never guarded. */
+  function processRailAd(block) {
+    if (!block.isConnected) return null;
+    const verdict = chooseVerdict([{ reason: "sponsored", signal: "rail" }], current(), feedRoute);
+    if (verdict && !block.hasAttribute(HIDE_ATTR)) health.count("clean.rail-ad");
+    return { owner: block, target: block, verdict, counts: false, unguarded: true };
+  }
+
   function collect(node) {
     if (node.nodeType !== 1) return;
     cache.capture(node);
     for (const u of node.matches(UNIT_SELECTOR) ? [node] : node.querySelectorAll(UNIT_SELECTOR)) dirtyUnits.add(u);
     for (const b of storyBlocks(node)) dirtyBlocks.add(b);
+    for (const b of railAdBlocks(node)) dirtyRailAds.add(b);
   }
 
   // One pass per frame: classify every dirty unit and block (reads), then measure and mark them in one batch.
@@ -589,8 +621,13 @@ export function startCleaner({ settings, route, onStats } = {}) {
         if (d) decisions.push(d);
       }
       for (const b of dirtyBlocks) decisions.push(...processBlock(b));
+      for (const b of dirtyRailAds) {
+        const d = processRailAd(b);
+        if (d) decisions.push(d);
+      }
       dirtyUnits.clear();
       dirtyBlocks.clear();
+      dirtyRailAds.clear();
       commit(decisions);
     }),
   );
@@ -614,6 +651,7 @@ export function startCleaner({ settings, route, onStats } = {}) {
   function reapplyAll() {
     for (const unit of doc.querySelectorAll(UNIT_SELECTOR)) dirtyUnits.add(unit);
     for (const block of storyBlocks(doc.body)) dirtyBlocks.add(block);
+    for (const block of railAdBlocks(doc.body)) dirtyRailAds.add(block);
     flush();
   }
 
@@ -642,6 +680,7 @@ export function startCleaner({ settings, route, onStats } = {}) {
       pending.clear();
       dirtyUnits.clear();
       dirtyBlocks.clear();
+      dirtyRailAds.clear();
       for (const el of doc.querySelectorAll(`[${HIDE_ATTR}]`)) el.removeAttribute(HIDE_ATTR);
     },
     stats: snapshot,

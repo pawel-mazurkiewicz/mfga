@@ -29,7 +29,11 @@ asks for one of them, merges them by time, removes duplicates (a friend's post i
 once), and drops every ad and suggestion before anything is drawn. Each source can be switched off in
 the settings. **Top News** shows Facebook's ranked feed, cleaned the same way.
 
-Older posts load with the 2010 **Older Posts** button (or automatically, if you prefer).
+Older posts load with the 2010 **Older Posts** button (or automatically, if you prefer). Open a photo
+or a profile from the feed and press Back: you are where you left off, with the same stories.
+
+The combined feed does not depend on the 2010 look: switch the 2010 layout off and Home keeps Facebook's
+2026 page around MFGA's feed (and loses the right column's ads).
 
 ## Install
 
@@ -75,7 +79,9 @@ Click **Account ▾ → MFGA Settings…** in the blue bar (or the toolbar butto
 * **Look** — the 2010 shell, the 2010 colours everywhere, the 2010 post look, fixed or scrolling
   blue bar, Lucida Grande or Tahoma, the welcome box, the chat tab, the right column, language.
 * **Health** — what MFGA found and did on this page (counts only), with **Export report** for bug
-  reports. The report never contains names, texts, links or ids.
+  reports. The report never contains names, texts, links or ids. Here too: debug logging, whether
+  MFGA may use its small page helper (it asks Facebook's own module registry for request ids and
+  tokens; without it MFGA relies on what it reads and learns), and stopping on security checks.
 
 ## How it works (and why it is safe)
 
@@ -97,13 +103,16 @@ Facebook's page.** Instead it:
 
 Likes and comments you make in MFGA's feed are sent with Facebook's own like/comment requests. If MFGA
 cannot do something safely (for example Facebook changed a request format), the link opens the post
-on Facebook instead.
+on Facebook instead. Comment previews under stories are rationed (a few a minute, only for stories you
+stop on), and repeated failures pause MFGA's requests for a few minutes rather than retrying.
 
-Everything happens in your browser. MFGA talks to nobody but facebook.com, keeps no history, and its
-settings stay in your browser's extension storage.
+Everything happens in your browser. MFGA talks to nobody but facebook.com and keeps no history: the
+request formats the extension learns are stored as empty templates, without post ids, texts or session
+ids. Settings stay in your browser's extension (or userscript manager) storage, and after you log out
+nothing of your account (name, groups, contacts) is shown or kept.
 
-If Facebook ever asks you to verify your account, MFGA stops all of its own requests for the rest of
-the page and gives the home page back to Facebook.
+If Facebook ever asks you to verify your account, MFGA stops all of its own requests (in every tab, for
+6 hours, reloads included), gives the home page back to Facebook and says why at the top of it.
 
 ## Limits
 
@@ -112,6 +121,12 @@ the page and gives the home page back to Facebook.
   report into an issue if something looks off.
 * Facebook-drawn pages (profiles, groups, events, Marketplace…) keep their 2026 layout under the 2010
   header and colours; only the home page is fully 2010.
+* Facebook's feed answers do not name the people who liked a post, so the 2010 line reads "8 people
+  like this." rather than naming friends.
+* Outside links in MFGA's feed go straight to the site, not through Facebook's `l.facebook.com`
+  redirect: Facebook does not learn which links you open, but it cannot warn you about a malicious one
+  at click time either. The link box shows the site's address.
+* The extension always registers its page helper; with the helper switched off it stays idle.
 * Lucida Grande and Tahoma are Windows/macOS fonts; on Linux the closest available font is used.
 * Mobile (m.facebook.com and the apps) is not supported.
 

@@ -27,6 +27,7 @@ registerStrings({
     "feed.welcome.step1": "See only posts from your friends, groups and pages. Ads and suggested posts are hidden.",
     "feed.welcome.step2": "Switch between Top News and Most Recent above the stream; Most Recent is newest first.",
     "feed.welcome.step3": "Choose what you see and how Facebook looks in MFGA Settings, in the Account menu above.",
+    "feed.welcome.step3Plain": "Choose what you see and how Facebook looks in MFGA Settings: the MFGA toolbar button, or your userscript manager's menu.",
     "feed.welcome.learn": "Learn more about Make Facebook Great Again",
 
     "story.and": " and ",
@@ -100,6 +101,7 @@ registerStrings({
     "feed.welcome.step1": "Widzisz tylko posty znajomych, grup i stron. Reklamy i sugerowane posty są ukryte.",
     "feed.welcome.step2": "Przełączaj Najciekawsze i Najnowsze nad listą postów; Najnowsze są od najnowszych.",
     "feed.welcome.step3": "Wybierz, co widzisz i jak wygląda Facebook, w Ustawieniach MFGA w menu Konto powyżej.",
+    "feed.welcome.step3Plain": "Wybierz, co widzisz i jak wygląda Facebook, w Ustawieniach MFGA: przycisk MFGA na pasku narzędzi albo menu menedżera skryptów.",
     "feed.welcome.learn": "Dowiedz się więcej o Make Facebook Great Again",
 
     "story.and": " i ",

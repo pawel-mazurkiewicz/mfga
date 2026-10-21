@@ -27,7 +27,9 @@ function miniature() {
 
 /** Builds the box; onClose runs after the box removed itself. `open(url)` follows the "Learn more" link. */
 export function renderWelcome({ onClose, open }) {
-  const steps = [1, 2, 3].map((n) => h("li.mfga-welcome-step", h("b.mfga-welcome-num", String(n)), h("span", t(`feed.welcome.step${n}`))));
+  // Where the settings are depends on the 2010 layout (its Account menu), which can change while the box is up.
+  const where = [h("span.mfga-welcome-shell", t("feed.welcome.step3")), h("span.mfga-welcome-plain", t("feed.welcome.step3Plain"))];
+  const steps = [1, 2, 3].map((n) => h("li.mfga-welcome-step", h("b.mfga-welcome-num", String(n)), n === 3 ? where : h("span", t(`feed.welcome.step${n}`))));
   const box = h(
     "div.mfga-welcome",
     h("div.mfga-welcome-head", h("h2.mfga-welcome-title", t("feed.welcome.title")), linkButton(t("feed.welcome.close"), close, "mfga-welcome-close")),

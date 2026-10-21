@@ -22,10 +22,10 @@ import { createClassifier } from "./data/classify.js";
 import { createFeedSource, FEED_QUERY, FEED_STYLES } from "./data/feed-source.js";
 import { createMergedFeed } from "./data/merge.js";
 import { createActions } from "./data/actions.js";
-import { classifyRoute, onRouteChange } from "./fb/routes.js";
+import { classifyRoute, onRouteChange, routeKey } from "./fb/routes.js";
 import { createNavigator } from "./fb/nav.js";
 import { createChromeReader } from "./fb/chrome-reader.js";
-import { createLayout, findMain } from "./fb/layout.js";
+import { createLayout, findMain, pushViewOpen } from "./fb/layout.js";
 import { startCleaner } from "./fb/cleaner.js";
 import { startSkin } from "./fb/skin.js";
 import { createShell } from "./ui/shell/shell.js";
@@ -47,6 +47,13 @@ const TRANSIENT_KINDS = new Set(["network", "server", "rate", "soft-block", "tok
 const LAST_SEEN_KEY = "mfga:lastSeen";
 // dom-chrome §6: c_user (i_user while acting as a Page) is readable from document.cookie whenever someone is signed in.
 const SIGNED_IN_COOKIE = /(?:^|;\s*)(?:c_user|i_user)=\d+/;
+// Comet loads a photo viewer before it shows it: after the URL leaves Home, look for its push view a while longer.
+const PUSH_VIEW_CHECKS_MS = [150, 400, 800, 1500];
+// Back on Home: re-attach our stream at once and keep the reader's place while Facebook re-renders the column.
+const RETURN_SETTLE_MS = 2000;
+// A route change this soon after a trusted popstate is that Back/Forward.
+const TRAVERSAL_MS = 1000;
+const HOME_PATH = /^\/(home\.php)?$/;
 const COMPOSER_SELECTORS = ['[role="region"][aria-label="Create a post"] [role="button"]', '[role="region"][aria-label="Utwórz post"] [role="button"]'];
 
 registerStrings({
@@ -64,6 +71,9 @@ registerStrings({
   },
 });
 
+// Facebook's home column: marked by the 2010 layout, or the page's own [role=main] when that layout is off.
+const FEED_COLUMN = '[data-mfga-main], html:not([data-mfga-shell]) [role="main"]:not([role="dialog"] *)';
+
 /** Every stylesheet MFGA needs, scoped by the html[data-mfga-*] attributes set below. */
 function buildCss(settings) {
   // baseCss first: its resets are low-specificity and every area's rules must come after them.
@@ -76,9 +86,10 @@ function buildCss(settings) {
     shellCss(settings),
     streamCss(settings),
     // Our News Feed replaces Facebook's home column; "pending" keeps Facebook's column invisible (but laid
-    // out) while we decide, so there is no flash of the 2026 feed.
-    'html[data-mfga-feed="ours"] [data-mfga-main]>:not(#mfga-stream){display:none!important}',
-    'html[data-mfga-feed="pending"] [data-mfga-main]>:not(#mfga-stream){visibility:hidden!important}',
+    // out) while we decide, so there is no flash of the 2026 feed. Without the 2010 layout nobody marks the
+    // column, so it is found by its role (never one inside a dialog, such as a photo viewer's).
+    `html[data-mfga-feed="ours"] :is(${FEED_COLUMN})>:not(#mfga-stream){display:none!important}`,
+    `html[data-mfga-feed="pending"] :is(${FEED_COLUMN})>:not(#mfga-stream){visibility:hidden!important}`,
     'html:not([data-mfga-feed="ours"]) #mfga-stream{display:none!important}',
   ].join("\n");
 }
@@ -242,6 +253,10 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
   let feedBroken = false; // a whole first page failed for good: Home shows Facebook's feed for this page's lifetime
   let homeNeedsReload = false; // Home has no usable query descriptor: links to it load the page afresh (§3.1)
   let haltNotice = null;
+  let pushBase = null; // the Home or groups-feed route kept on screen while a push view (a photo) is open over it
+  let pushGoneTicks = 0;
+  let homeY = 0; // the window scroll in our stream the last time Home was on screen
+  let lastTraversal = -Infinity; // performance.now() of the last Back/Forward
 
   // ARCHITECTURE §3.1: while Home cannot have our feed for want of a query descriptor, "News Feed" (and every
   // other link to Home) does a full page load, which brings the preloader with it.
@@ -429,7 +444,7 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
   /** Can we render this feed ourselves? Needs the home-feed query descriptor with its variables. */
   async function canUseOurFeed() {
     if (!client || !ops || client.halted) return false;
-    if (!S().look.shell || signedOut || !harvest.tokens.userId) return false;
+    if (signedOut || !harvest.tokens.userId) return false;
     const op = feedBroken ? null : await ops.get(FEED_QUERY).catch(() => null);
     homeNeedsReload = !op?.variables;
     return !homeNeedsReload;
@@ -493,6 +508,13 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
     () => {
       if (route.mode === "home" && document.documentElement.getAttribute("data-mfga-feed") === "ours") mountFeed();
       mountHaltNotice();
+      // The push view closed without a URL change, or Facebook turned it into a page of its own.
+      pushGoneTicks = pushBase && !pushViewOpen() ? pushGoneTicks + 1 : 0;
+      if (pushGoneTicks >= 2) {
+        pushBase = null;
+        pushGoneTicks = 0;
+        showRoute(classifyRoute());
+      }
     },
     { disableOnError: false },
   );
@@ -510,16 +532,78 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
   // ---------------------------------------------------------------------------------------------
 
   function onRoute(next) {
+    const base = pushBase || route;
+    const fromFeed = base.mode === "home" || base.mode === "groups-feed";
+    // A photo opened over Home or the groups feed: Facebook keeps that page mounted under its viewer, and so
+    // do we, instead of tearing the page down and rebuilding it when the viewer closes.
+    if (next.mode === "page" && fromFeed && pushViewOpen()) return keepUnderPushView(base);
+    pushBase = null;
+    showRoute(next, { restore: performance.now() - lastTraversal < TRAVERSAL_MS });
+    if (next.mode === "page" && fromFeed) watchForPushView(base);
+  }
+
+  /** Lays the page out for `next`: the URL's route, or the one kept under a push view. */
+  function showRoute(next, { restore = false } = {}) {
+    const returning = next.mode === "home" && route.mode !== "home";
     route = next;
     applyRootAttributes(S());
     layout.apply(route);
     shell?.update?.({ route });
     cleaner?.setRoute?.(route);
-    if (route.mode !== "home") {
-      feedView?.el?.remove();
-    }
+    if (route.mode !== "home") feedView?.el?.remove();
     mountHaltNotice();
-    syncFeed();
+    const view = feedView;
+    Promise.resolve(syncFeed()).then(() => {
+      if (returning && view && feedView === view) settleReturn(restore ? homeY : 0);
+    });
+  }
+
+  function keepUnderPushView(base) {
+    const relayout = route !== base; // the viewer showed up after we had laid the page out for its own URL
+    pushBase = base;
+    pushGoneTicks = 0;
+    if (relayout) showRoute(base, { restore: true });
+  }
+
+  function watchForPushView(base) {
+    const key = routeKey();
+    for (const ms of PUSH_VIEW_CHECKS_MS) {
+      setTimeout(() => {
+        if (!pushBase && routeKey() === key && pushViewOpen()) keepUnderPushView(base);
+      }, ms);
+    }
+  }
+
+  /**
+   * Home again with the same stream: put it back at once rather than on the next remount tick, and after
+   * Back/Forward (or a push view) scroll to where the reader was, as Facebook's column re-renders under it.
+   * Any input from the reader ends this.
+   */
+  function settleReturn(y) {
+    const until = performance.now() + RETURN_SETTLE_MS;
+    const inputs = ["wheel", "touchstart", "keydown", "mousedown"];
+    let stopped = false;
+    const stop = () => {
+      stopped = true;
+    };
+    for (const type of inputs) addEventListener(type, stop, { capture: true, passive: true });
+    const step = () => {
+      if (stopped || route.mode !== "home" || performance.now() > until) {
+        for (const type of inputs) removeEventListener(type, stop, true);
+        return;
+      }
+      remount();
+      const room = document.documentElement.scrollHeight - innerHeight;
+      if (y > 0 && feedView?.el?.isConnected && Math.abs(scrollY - y) > 1 && room >= y) scrollTo(0, y);
+      requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+
+  /** Remembers the reader's place in our stream (only while Home, with our stream, is what is on screen). */
+  function trackHomeScroll() {
+    if (route.mode !== "home" || pushBase || !HOME_PATH.test(location.pathname)) return;
+    if (feedView?.el?.isConnected && document.documentElement.getAttribute("data-mfga-feed") === "ours") homeY = scrollY;
   }
 
   /** The 2010 shell, once the 2010 layout is on (at start, or later from the settings). */
@@ -546,6 +630,11 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
     ensureShell();
     cleaner = safe("cleaner", () => startCleaner({ settings, route }))();
     skin = safe("skin", () => startSkin({ settings }))();
+    // Registered before onRouteChange's own listener, so a Back/Forward is known when its route change runs.
+    addEventListener("popstate", (ev) => {
+      if (ev.isTrusted) lastTraversal = performance.now();
+    });
+    addEventListener("scroll", trackHomeScroll, { passive: true });
     onRouteChange((next) => onRoute(next));
     harvest?.ready?.then?.(persistPreloader);
     persistPreloader();

@@ -248,13 +248,38 @@ describe("MFGA userscript: wiring (src/main.js)", { skip: !hasUserscript() && `n
       await first.evaluate((key) => localStorage.setItem(key, JSON.stringify({ look: { shell: false } })), SETTINGS_KEY);
       await first.close();
       const page = await p.open("/");
-      await page.waitForFunction(() => document.documentElement.getAttribute("data-mfga-feed") === "native", null, { timeout: 30000 });
+      await waitStories(page, 3);
+      assert.equal(await page.evaluate(() => document.querySelector("#mfga-shell")?.children.length ?? 0), 0, "no shell yet");
       await openSettings(page);
       await page.getByRole("tab", { name: /Look/ }).click();
       await page.getByRole("checkbox", { name: /2010 layout/ }).check();
       await page.waitForFunction(() => document.querySelector("#mfga-shell .mfga-shell-root"), null, { timeout: 15000 });
       assert.ok(await page.$eval("#mfga-shell", (host) => !host.hidden && host.children.length > 0), "the shell is drawn");
       await waitStories(page, 3);
+    });
+  });
+
+  test("2010 layout off: Home still gets the combined feed, and Facebook's right-column ads are hidden", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p, errors) => {
+      const first = await p.open("/");
+      await first.evaluate((key) => localStorage.setItem(key, JSON.stringify({ look: { shell: false } })), SETTINGS_KEY);
+      await first.close();
+      const page = await p.open("/");
+      await waitStories(page, 5);
+      assert.equal(await feedAttr(page), "ours");
+      assert.equal(await page.evaluate(() => document.documentElement.hasAttribute("data-mfga-shell")), false, "Facebook's own layout");
+      assert.equal(await nativePostsShown(page), 0, "Facebook's feed (and its ads) is replaced");
+      const rail = await page.evaluate(() => {
+        const rail = document.querySelector('[role="complementary"]');
+        const shown = (el) => !!el.getClientRects().length;
+        return {
+          ads: [...rail.querySelectorAll('a[target^="rhcad"]')].filter(shown).length,
+          headings: [...rail.querySelectorAll("h3")].filter(shown).map((h) => h.textContent),
+        };
+      });
+      assert.equal(rail.ads, 0, "no right-column ad on screen");
+      assert.deepEqual(rail.headings, ["Birthdays", "Contacts", "Group chats"], "the rest of the column stays");
+      assert.deepEqual(errors, []);
     });
   });
 
@@ -320,6 +345,80 @@ describe("MFGA userscript: wiring (src/main.js)", { skip: !hasUserscript() && `n
       await page.waitForSelector('[role="dialog"][aria-label="Create post"]', { timeout: 10000 });
       assert.equal(p.site.documents.length, docs, "no navigation");
       assert.deepEqual(errors, []);
+    });
+  });
+
+  test("a photo opened from our feed opens over Home: closing it returns to the same stream at the same place", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p, errors) => {
+      const page = await p.open("/");
+      await waitStories(page, 10);
+      const photo = page.locator("#mfga-stream a.mfga-att-photo").nth(2);
+      await photo.scrollIntoViewIfNeeded();
+      await page.evaluate(() => {
+        document.getElementById("mfga-stream").mfgaTestMark = true;
+      });
+      const y = await page.evaluate(() => scrollY);
+      assert.ok(y > 300, `scrolled into the feed (${y})`);
+      const sent = p.site.mock.feedRequests().length;
+      await photo.click();
+      // The fake Comet shows its viewer 350 ms after the URL changes: MFGA has laid the page out for /photo/ by then.
+      await page.waitForSelector("[data-fake-push-view]", { timeout: 10000 });
+      await page.waitForTimeout(2000);
+      assert.match(await page.evaluate(() => location.pathname), /^\/photo/);
+      assert.equal(await page.evaluate(() => document.documentElement.getAttribute("data-mfga-route")), "home", "the 2010 home page stays under the viewer");
+      assert.equal(await feedAttr(page), "ours");
+      assert.ok(await page.evaluate(() => document.getElementById("mfga-stream")?.isConnected), "our stream stays in the column");
+      assert.ok(Math.abs((await page.evaluate(() => scrollY)) - y) <= 2, "the page under the viewer keeps its place");
+
+      await page.goBack();
+      await page.waitForFunction(() => location.pathname === "/" && !document.querySelector("[data-fake-push-view]"), null, { timeout: 10000 });
+      await page.waitForTimeout(800);
+      assert.ok(await page.evaluate(() => document.getElementById("mfga-stream")?.mfgaTestMark === true), "the same stream, not a rebuilt one");
+      assert.ok(Math.abs((await page.evaluate(() => scrollY)) - y) <= 2, "back where the reader was");
+      assert.equal(p.site.mock.feedRequests().length, sent, "no feed request");
+      assert.deepEqual(errors, []);
+    });
+  });
+
+  test("Back from a page opened from our feed returns to the same stream at the same place", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p, errors) => {
+      const page = await p.open("/");
+      await waitStories(page, 10);
+      const actor = page.locator("#mfga-stream a.mfga-story-actor:not(.mfga-story-target)").nth(6);
+      await actor.scrollIntoViewIfNeeded();
+      await page.evaluate(() => {
+        document.getElementById("mfga-stream").mfgaTestMark = true;
+      });
+      const y = await page.evaluate(() => scrollY);
+      assert.ok(y > 300, `scrolled into the feed (${y})`);
+      const sent = p.site.mock.feedRequests().length;
+      await actor.click();
+      await page.waitForFunction(() => location.pathname !== "/" && document.documentElement.getAttribute("data-mfga-route") === "page", null, { timeout: 10000 });
+      await page.waitForTimeout(2000); // the fake Comet has rendered the page and scrolled to its top
+      assert.ok(!(await page.evaluate(() => document.getElementById("mfga-stream")?.isConnected)), "our stream is out of Facebook's page");
+
+      await page.goBack();
+      await page.waitForFunction(() => location.pathname === "/" && document.getElementById("mfga-stream")?.isConnected, null, { timeout: 10000 });
+      await page.waitForTimeout(800);
+      assert.ok(await page.evaluate(() => document.getElementById("mfga-stream").mfgaTestMark === true), "the same stream, not a rebuilt one");
+      assert.ok(Math.abs((await page.evaluate(() => scrollY)) - y) <= 2, `back where the reader was (${y})`);
+      assert.equal(p.site.mock.feedRequests().length, sent, "no feed request");
+      assert.deepEqual(errors, []);
+    });
+  });
+
+  test("the News Feed link goes back to the top of the stream (no restore without Back)", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p) => {
+      const page = await p.open("/");
+      await waitStories(page, 10);
+      await page.locator("#mfga-stream a.mfga-story-actor:not(.mfga-story-target)").nth(6).scrollIntoViewIfNeeded();
+      await page.locator("#mfga-stream a.mfga-story-actor:not(.mfga-story-target)").nth(6).click();
+      await page.waitForFunction(() => document.documentElement.getAttribute("data-mfga-route") === "page", null, { timeout: 10000 });
+      await page.waitForTimeout(1500);
+      await clickHomeLink(page);
+      await page.waitForFunction(() => location.pathname === "/" && document.getElementById("mfga-stream")?.isConnected, null, { timeout: 10000 });
+      await page.waitForTimeout(800);
+      assert.ok((await page.evaluate(() => scrollY)) < 5, "at the top");
     });
   });
 });

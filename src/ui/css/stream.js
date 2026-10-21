@@ -126,6 +126,7 @@ const welcomeRules = `
 .mfga-stream .mfga-welcome-steps{flex:1;min-width:0;margin:6px 0 0;padding:0;list-style:none}
 .mfga-welcome-step{display:flex;align-items:flex-start;margin:0 0 10px;line-height:14px}
 .mfga-welcome-step:last-child{margin-bottom:0}
+html[data-mfga-shell] .mfga-welcome-plain,html:not([data-mfga-shell]) .mfga-welcome-shell{display:none}
 .mfga-welcome-num{flex:none;width:15px;height:16px;margin-right:8px;background:#A6B2CA;color:#fff;font-weight:bold;line-height:16px;text-align:center}
 .mfga-welcome-learn{display:inline-block;margin-top:12px;font-size:13px;font-weight:bold;line-height:16px}
 .mfga-welcome-arrow{display:inline-block;width:0;height:0;margin:0 0 2px 5px;border-left:4px solid ${BLUE};border-top:4px solid transparent;border-bottom:4px solid transparent;vertical-align:middle}

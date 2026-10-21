@@ -229,6 +229,7 @@ export function shellCss(settings): string
 // src/fb/labels.js   locale dictionaries for detection (en, pl, + zbluebugz/webcleaner lists)
 // src/fb/cleaner.js
 startCleaner({ settings, route, onStats }): { setRoute(route), stop(), stats() }
+railAdBlocks(node): Element[]  // the right column's ad blocks in/under node (hidden with clean.sponsored, not counted)
 // src/fb/skin.js
 startSkin({ settings }): { stop() }
 // src/ui/css/theme.js

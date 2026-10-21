@@ -33,16 +33,16 @@ export async function bundle(entry, { define = {}, globalName } = {}) {
   return r.outputFiles[0].text;
 }
 
-/**
- * Launches Chromium. options.routes: [{ url: string|RegExp|fn, handler(route, request) }] extra routes,
- * checked before the default page route. options.extensionPath: load an unpacked extension (headed
- * "new headless" mode is used automatically).
- */
 // Routes see only the first request of a redirect chain: a fulfilled 302 (a checkpoint redirect in the mock) is
 // followed by the browser itself. With a dead proxy and no loopback bypass, such a follow-up fails instead of
 // reaching the real facebook.com with the fake session cookies.
 const OFFLINE_ARGS = ["--proxy-server=http://127.0.0.1:9", "--proxy-bypass-list=<-loopback>"];
 
+/**
+ * Launches Chromium. options.routes: [{ url: string|RegExp|fn, handler(route, request) }] extra routes,
+ * checked before the default page route. options.extensionPath: load an unpacked extension (headed
+ * "new headless" mode is used automatically).
+ */
 export async function launchBrowser({ extensionPath = null, viewport = { width: 1280, height: 900 } } = {}) {
   let browser = null;
   let context;

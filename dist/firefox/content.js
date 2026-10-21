@@ -1311,8 +1311,13 @@ ${S2} .mfga-chat-tab{position:fixed;right:15px;bottom:0;z-index:0;display:flex;a
 ${S2} .mfga-chat-tab:hover{background:linear-gradient(#FFF,#E5E5E5)}
 `;
   }
-  function shellCss() {
-    return [facebookCss(), baseCss2(), headerCss(), leftCss(), rightCss(), footerCss()].join("");
+  function chatHeadCss(settings) {
+    if (settings?.look?.chat === false) return "";
+    return `${onColumns(':is([aria-label="New message"],[aria-label="Nowa wiadomość"])[role="button"]:not([role="dialog"] *)')}{display:none!important}
+`;
+  }
+  function shellCss(settings) {
+    return [facebookCss(), baseCss2(), headerCss(), leftCss(), rightCss(), footerCss(), chatHeadCss(settings)].join("");
   }
 
   // src/ui/css/stream.js

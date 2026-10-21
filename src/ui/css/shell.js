@@ -157,6 +157,16 @@ ${S} .mfga-chat-tab:hover{background:linear-gradient(#FFF,#E5E5E5)}
 }
 
 /** The shell's CSS; it does not depend on settings (visibility toggles are applied by the shell itself). */
-export function shellCss() {
-  return [facebookCss(), baseCss(), headerCss(), leftCss(), rightCss(), footerCss()].join("");
+/**
+ * Facebook's round "New message" launcher (dom-chrome §7.4) sits in the bottom-right corner that the 2010 chat
+ * tab takes, so it goes while the tab is shown; open chat windows and heads stay. Its label is known in
+ * English and Polish (one in a Messenger dropdown is inside a dialog and stays).
+ */
+function chatHeadCss(settings) {
+  if (settings?.look?.chat === false) return "";
+  return `${onColumns(':is([aria-label="New message"],[aria-label="Nowa wiadomość"])[role="button"]:not([role="dialog"] *)')}{display:none!important}\n`;
+}
+
+export function shellCss(settings) {
+  return [facebookCss(), baseCss(), headerCss(), leftCss(), rightCss(), footerCss(), chatHeadCss(settings)].join("");
 }

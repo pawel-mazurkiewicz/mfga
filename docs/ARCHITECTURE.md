@@ -212,7 +212,8 @@ gets the 2010 header + footer over Facebook's own (re-themed) page.
 
 * Our nodes live in `#mfga-shell`, a sibling of Facebook's React root inside `<body>`.
 * Facebook's banner, left rail and right rail are hidden by stylesheet; dialogs, popovers, menus and chat
-  windows (portalled outside `[role=main]`) are never hidden or covered.
+  windows (portalled outside `[role=main]`) are never hidden or covered. Only the round "New message"
+  launcher in the bottom-right corner gives way to the 2010 chat tab on the column routes.
 * `--header-height` is overridden to the 2010 bar height so Facebook reserves exactly our bar's space.
 * On 3-column routes `[role="main"]` is clamped to 520px and placed into the 980px grid with
   `position:relative; left:Δx; top:Δy` (measured, re-measured on resize/route change). Relative

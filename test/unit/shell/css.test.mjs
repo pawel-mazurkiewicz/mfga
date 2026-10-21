@@ -89,3 +89,15 @@ test("no shell source file uses innerHTML-like sinks, and every icon it names ex
     for (const m of src.matchAll(/"((?:nav|rc|chat|misc|jewel)_[a-z0-9_]+)"/g)) assert.ok(ICON_NAMES.includes(m[1]), `${f}: ${m[1]}`);
   }
 });
+
+test("Facebook's New message launcher gives way to the 2010 chat tab on the column routes only", () => {
+  const rule = /([^}]*\[aria-label="New message"\][^{]*)\{display:none!important\}/.exec(css);
+  assert.ok(rule, "hidden while the chat tab is on");
+  assert.match(rule[1], /html\[data-mfga-route="home"\]/);
+  assert.match(rule[1], /html\[data-mfga-route="groups-feed"\]/);
+  assert.doesNotMatch(rule[1], /data-mfga-route="page"/, "Facebook's pages keep it");
+  assert.match(rule[1], /\[aria-label="Nowa wiadomość"\]/);
+  assert.match(rule[1], /:not\(\[role="dialog"\] \*\)/, "the Messenger dropdown's button stays");
+  const off = shellCss({ ...DEFAULTS, look: { ...DEFAULTS.look, chat: false } });
+  assert.doesNotMatch(off, /New message/, "no tab, no reason to hide it");
+});

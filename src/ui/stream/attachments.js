@@ -39,10 +39,10 @@ function renderPhotos(att, story) {
   );
 }
 
-function playVideo(thumb, att, src, size) {
+function playVideo(thumb, poster, src, size) {
   const video = h("video.mfga-att-player", {
     src,
-    poster: safeUrl(att.poster),
+    poster,
     controls: true,
     autoplay: true,
     preload: "none",
@@ -57,7 +57,8 @@ function playVideo(thumb, att, src, size) {
 
 function renderVideo(att, story) {
   const size = fitBox(att.width, att.height, VIDEO_BOX.w, VIDEO_BOX.h);
-  const poster = att.poster ? h("img", { src: att.poster, alt: "", loading: "lazy", decoding: "async", width: size.width, height: size.height }) : null;
+  const posterUrl = safeUrl(att.poster); // also set as the <video>'s poster, which h() does not check
+  const poster = posterUrl ? h("img", { src: posterUrl, alt: "", loading: "lazy", decoding: "async", width: size.width, height: size.height }) : null;
   const thumb = link(
     att.href || story.url,
     { class: "mfga-att-video-thumb", style: { width: size.width, height: size.height }, "aria-label": t("story.play"), role: "button" },
@@ -71,7 +72,7 @@ function renderVideo(att, story) {
       "click",
       guard((ev) => {
         if (ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
-        if (playVideo(thumb, att, src, size)) ev.preventDefault();
+        if (playVideo(thumb, posterUrl, src, size)) ev.preventDefault();
       }),
     );
   }

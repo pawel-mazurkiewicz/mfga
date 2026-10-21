@@ -396,6 +396,32 @@ test("onStats keeps reporting while the page mutates every frame", async () => {
   await page.close();
 });
 
+test("a throwing onStats listener is recorded but does not switch the cleaner off", async () => {
+  const page = await open("feed.html", { start: false });
+  await page.evaluate(() => {
+    const N = window.__mfgaNative;
+    window.__settings = N.memorySettings();
+    N.installStyle(window.__settings.get());
+    const onStats = () => {
+      throw new Error("listener bug");
+    };
+    window.__cleaner = N.startCleaner({ settings: window.__settings, route: { mode: "home" }, onStats });
+  });
+  await page.waitForTimeout(400);
+  await page.evaluate(() => document.getElementById("feed-list").prepend(window.__mfgaNative.cloneSlot("sponsored-shuffled-ad", "after-error", 68)));
+  await settle(page);
+  const r = await page.evaluate(() => ({
+    mark: document.querySelector('[data-fixture="after-error"]').firstElementChild.getAttribute("data-mfga-hide"),
+    errors: window.__mfgaNative.health.errors.cleaner?.n ?? 0,
+    disabled: window.__mfgaNative.health.disabled.has("cleaner"),
+  }));
+  assert.equal(r.mark, "sponsored");
+  assert.ok(r.errors >= 1, "the listener's error is in the health panel");
+  assert.equal(r.disabled, false);
+  noErrors(page);
+  await page.close();
+});
+
 test("the Stories tray takes only its own labelled region along, never a wider top-of-feed region", async () => {
   const page = await open("feed.html", { start: false });
   await page.evaluate(() => {

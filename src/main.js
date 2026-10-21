@@ -42,24 +42,29 @@ const COMPOSER_SELECTORS = ['[role="region"][aria-label="Create a post"] [role="
 registerStrings({
   en: {
     "main.menu": "MFGA settings",
+    "main.turnOff": "Turn MFGA off (back to 2026 Facebook)",
+    "main.turnOn": "Turn MFGA on",
     "main.halted": "MFGA paused its own requests because Facebook asked to verify your account. Facebook itself is unaffected.",
   },
   pl: {
     "main.menu": "Ustawienia MFGA",
+    "main.turnOff": "Wyłącz MFGA (powrót do Facebooka 2026)",
+    "main.turnOn": "Włącz MFGA",
     "main.halted": "MFGA wstrzymało własne zapytania, bo Facebook poprosił o weryfikację konta. Sam Facebook działa normalnie.",
   },
 });
 
 /** Every stylesheet MFGA needs, scoped by the html[data-mfga-*] attributes set below. */
 function buildCss(settings) {
+  // baseCss first: its resets are low-specificity and every area's rules must come after them.
   return [
-    iconCss(),
     baseCss(settings),
+    dialogCss(),
+    iconCss(),
     themeCss(settings),
     nativeCss(settings),
     shellCss(settings),
     streamCss(settings),
-    dialogCss(),
     // Our News Feed replaces Facebook's home column; "pending" keeps Facebook's column invisible (but laid
     // out) while we decide, so there is no flash of the 2026 feed.
     'html[data-mfga-feed="ours"] [data-mfga-main]>:not(#mfga-stream){display:none!important}',
@@ -68,12 +73,15 @@ function buildCss(settings) {
   ].join("\n");
 }
 
+// Facebook forces its media viewers dark by putting the class on <html>; leave those routes alone.
+const MEDIA_ROUTE = /^\/(photo|photos|reel|reels|stories|watch|video|videos)(\/|\.php|$)/;
+
 /** html[data-mfga*] state that is not owned by the layout (which sets shell/route/fixed-header). */
 function applyRootAttributes(s) {
   const html = document.documentElement;
   if (!html) return;
   html.toggleAttribute("data-mfga", !!s.enabled);
-  html.toggleAttribute("data-mfga-theme", !!(s.enabled && s.look.theme));
+  html.toggleAttribute("data-mfga-theme", !!(s.enabled && s.look.theme && !MEDIA_ROUTE.test(location.pathname)));
   html.toggleAttribute("data-mfga-skin", !!(s.enabled && s.look.skinPosts));
   html.setAttribute("data-mfga-font", s.look.font);
 }
@@ -122,6 +130,13 @@ export async function boot(platform) {
 
   const app = createApp({ platform, settings, harvest, style });
   platform.addMenuCommand(t("main.menu"), () => app.openSettings());
+  // The master switch has no control in the dialog; userscript managers get a menu entry for it.
+  if (platform.kind === "userscript") {
+    platform.addMenuCommand(t(s0.enabled ? "main.turnOff" : "main.turnOn"), async () => {
+      await settings.update({ enabled: !settings.get().enabled });
+      location.reload();
+    });
+  }
   settings.subscribe((next, prev) => app.onSettings(next, prev));
   if (!s0.enabled) return;
   onBody(safe("boot", () => app.start()));
@@ -330,6 +345,7 @@ function createApp({ platform, settings, harvest, style }) {
 
   function onRoute(next) {
     route = next;
+    applyRootAttributes(S());
     layout.apply(route);
     shell?.update?.({ route });
     cleaner?.setRoute?.(route);
@@ -366,12 +382,11 @@ function createApp({ platform, settings, harvest, style }) {
   }
 
   function onSettings(next, prev) {
-    paint(style, next);
     setDebug(next.advanced.debug);
-    if (next.language !== prev.language) {
-      setLocale(next.language);
-      shell?.update?.({});
-    }
+    // setLocale before painting: nativeCss() contains translated labels.
+    if (next.language !== prev.language) setLocale(next.language);
+    paint(style, next);
+    if (next.language !== prev.language) shell?.update?.({});
     if (next.feed.hideAI !== prev.feed.hideAI) classifier = createClassifier({ hideAI: next.feed.hideAI });
     if (!next.enabled) {
       layout.apply(route);

@@ -5,6 +5,7 @@ import { themeCss } from "../../../src/ui/css/theme.js";
 import { nativeCss } from "../../../src/ui/css/native.js";
 import { DEFAULTS, sanitize } from "../../../src/shared/settings.js";
 import { setLocale } from "../../../src/shared/i18n.js";
+import { health } from "../../../src/shared/util.js";
 
 /** A minimal settings store (get/update/subscribe) like createSettings(), without storage. */
 function memorySettings(patch = {}) {
@@ -61,5 +62,6 @@ window.__mfgaNative = {
   memorySettings,
   installStyle,
   setLocale,
+  health,
   DEFAULTS,
 };

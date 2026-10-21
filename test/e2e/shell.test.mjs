@@ -24,6 +24,7 @@ const PL = [
   ['"Shortcuts"', '"Skróty"'],
   ["Dasha Trofimova's birthday is today.", "Dasha Trofimova ma dziś urodziny 🎉"],
   [", Active", ", Aktywny teraz"],
+  ["Meta AI profile photo Meta AIVerified account", "Zdjęcie profilowe Meta AI Meta AIZweryfikowane konto"],
 ];
 const polish = (html) => PL.reduce((s, [a, b]) => s.replaceAll(a, b), html);
 /** The Feeds filter routes render no rails (dom-chrome §3.3). */
@@ -261,6 +262,8 @@ describe("2010 shell on Home", () => {
     const page = await openShell({ html: polish(FIXTURE) });
     const counts = await page.evaluate(() => __mfga.reader.counts());
     assert.deepEqual(counts, { notifications: 7, messages: 2, friendRequests: 4 });
+    const contacts = await page.evaluate(() => __mfga.reader.contacts().map((c) => c.name));
+    assert.ok(contacts.length === 6 && !contacts.some((n) => /meta ai/i.test(n)), `Meta AI is recognised by its picture: ${contacts}`);
     const ui = await page.evaluate(() => ({
       links: [...document.querySelectorAll(".mfga-header-link")].map((a) => a.textContent),
       nav: [...document.querySelectorAll(".mfga-shell-left .mfga-nav-link")].slice(0, 5).map((a) => a.textContent),
@@ -306,6 +309,43 @@ describe("2010 shell on Home", () => {
     await page.waitForFunction(() => document.querySelector(".mfga-header-jewel-notifications .mfga-header-count")?.textContent === "5", null, { timeout: 5000 });
     await page.waitForFunction(() => document.querySelector("[data-mfga-main]")?.getBoundingClientRect().left === 345, null, { timeout: 4000 });
     assert.equal(await page.evaluate(() => document.querySelector(".mfga-nav-me-name")?.textContent), "Pat Example");
+  });
+
+  it("keeps working when Facebook's banner has a link without an href", async () => {
+    const html = FIXTURE.replace('<li><span><div><a aria-label="Home"', '<li><span><div><a aria-label="Reels" role="link" tabindex="0">Reels</a></div></span></li><li><span><div><a aria-label="Home"');
+    const page = await openShell({ html });
+    assert.deepEqual(await page.evaluate(() => __mfga.reader.counts()), { notifications: 5, messages: 1, friendRequests: 3 });
+    const ui = await page.evaluate(() => ({ jewel: document.querySelector(".mfga-header-jewel-notifications .mfga-header-count")?.textContent, rows: document.querySelectorAll(".mfga-shell-left .mfga-nav-item").length }));
+    assert.equal(ui.jewel, "5");
+    assert.ok(ui.rows > 10, "the left column rendered");
+  });
+
+  it("recognises a viewer whose username has dots, and their groups", async () => {
+    const html = FIXTURE.replace('href="https://www.facebook.com/profile.php?id=100001234567890"><img', 'href="https://www.facebook.com/pat.example"><img');
+    const page = await openShell({ html, cfg: { clearCache: true } });
+    await page.waitForFunction(() => document.querySelectorAll(".mfga-shell-left .mfga-nav-pic").length === 4);
+    const ui = await page.evaluate(() => ({
+      name: document.querySelector(".mfga-nav-me-name")?.textContent,
+      href: document.querySelector(".mfga-nav-me-name")?.getAttribute("href"),
+      photos: document.querySelector(".mfga-nav-item[data-key=photos] a").getAttribute("href"),
+    }));
+    assert.deepEqual(ui, { name: "Pat Example", href: `${FB}/pat.example`, photos: `${FB}/pat.example/photos` });
+  });
+
+  it("follows Facebook when it replaces the main column", async () => {
+    const page = await openShell();
+    await page.evaluate(() => {
+      const old = document.querySelector('[role="main"]');
+      const next = old.cloneNode(true);
+      next.removeAttribute("data-mfga-main");
+      old.replaceWith(next);
+      window.__oldMain = old;
+    });
+    await page.waitForFunction(() => document.querySelector('[role="main"]').hasAttribute("data-mfga-main"), null, { timeout: 3000 });
+    await settle(page);
+    const m = await rect(page, "[data-mfga-main]");
+    assert.deepEqual([m.left, m.top, m.width], [345, 61, 520]);
+    assert.equal(await page.evaluate(() => window.__oldMain.hasAttribute("data-mfga-main")), false, "the detached column is unmarked");
   });
 
   it("keeps the counts live when Facebook updates its labels", async () => {
@@ -401,6 +441,52 @@ describe("navigation", () => {
     const page2 = await openShell({ cfg: { helper: true } });
     await Promise.all([page2.waitForURL(`${FB}/friends/`), page2.evaluate(() => void setTimeout(() => __mfga.navigator.go("/friends/", { hard: true })))]);
     assert.equal(await page2.evaluate(() => window.__mfga), undefined, "a real load happened");
+  });
+
+  it("never clicks MFGA's own anchors inside Facebook's root (the stream), it loads the page instead", async () => {
+    const page = await openShell();
+    // WP-C's stream sits inside [role=main] and hands its internal links to the navigator.
+    await page.evaluate(() => {
+      const stream = document.createElement("div");
+      stream.id = "mfga-stream";
+      stream.className = "mfga-ui";
+      const a = Object.assign(document.createElement("a"), { href: "/kasia.nowak/posts/123", textContent: "permalink" });
+      a.setAttribute("data-mfga-open", "");
+      stream.appendChild(a);
+      stream.addEventListener("click", (e) => {
+        const link = e.target.closest("a[data-mfga-open]");
+        if (!link) return;
+        e.preventDefault();
+        window.__streamClicks = (window.__streamClicks || 0) + 1;
+        __mfga.navigator.go(link.href);
+      });
+      document.querySelector('[role="main"]').prepend(stream);
+    });
+    await Promise.all([page.waitForURL(`${FB}/kasia.nowak/posts/123`, { timeout: 4000 }), page.click("#mfga-stream a")]);
+    assert.equal(await page.evaluate(() => window.__mfga), undefined, "a real load happened");
+  });
+
+  it("refuses script URLs", async () => {
+    const page = await openShell({ cfg: { helper: true } });
+    const r = await page.evaluate(async () => {
+      for (const url of ["javascript:window.__pwned=1", "data:text/html,<script>parent.__pwned=1</script>"]) __mfga.navigator.go(url);
+      await new Promise((res) => setTimeout(res, 300));
+      return { pwned: window.__pwned ?? null, href: location.href, calls: __mfga.state.navCalls };
+    });
+    assert.deepEqual(r, { pwned: null, href: `${FB}/`, calls: [] });
+  });
+
+  it("stays in the single-page app on web.facebook.com", async () => {
+    const WEB = "https://web.facebook.com";
+    b.route((u) => u.hostname === "web.facebook.com", (route) => route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: FIXTURE }));
+    const page = await openShell({ url: `${WEB}/` });
+    await page.click(".mfga-shell-left .mfga-nav-item[data-key=friends] a");
+    await page.waitForFunction(() => location.pathname === "/friends/");
+    assert.deepEqual(await page.evaluate(() => [location.host, __fb.clicks, !!window.__mfga]), ["web.facebook.com", ["/friends/"], true], "Facebook's own anchor, no page load");
+    const helper = await openShell({ url: `${WEB}/`, cfg: { helper: true } });
+    await helper.click(".mfga-shell-right .mfga-rc-pokes .mfga-rc-row");
+    await helper.waitForFunction(() => location.pathname === "/pokes/");
+    assert.deepEqual(await helper.evaluate(() => [location.host, __mfga.state.navCalls]), ["web.facebook.com", ["/pokes/"]]);
   });
 
   it("leaves modified clicks to the browser and routes search and jewels", async () => {
@@ -502,7 +588,15 @@ describe("layout", () => {
     });
     const m = await rect(page, "[data-mfga-main]");
     assert.deepEqual([m.left, m.top, m.width], [345, 61, 520]);
-    await page.evaluate(() => localStorage.clear());
+
+    // Someone else signs in on the same browser: the cached rail is not theirs.
+    await b.context.addCookies([{ name: "c_user", value: "100009999999999", domain: ".facebook.com", path: "/" }]);
+    const other = await openShell({ url: `${FB}/?filter=friends&sk=h_chr`, html: withoutRails(FIXTURE) });
+    await other.waitForTimeout(300);
+    const ui2 = await other.evaluate(() => ({ name: document.querySelector(".mfga-nav-me-name")?.textContent ?? null, groups: document.querySelectorAll(".mfga-shell-left .mfga-nav-pic").length, chat: document.querySelector(".mfga-chat-tab").textContent }));
+    assert.deepEqual(ui2, { name: null, groups: 0, chat: "Chat (Offline)" });
+    await b.context.addCookies([{ name: "c_user", value: "100001234567890", domain: ".facebook.com", path: "/" }]);
+    await other.evaluate(() => localStorage.clear());
   });
 });
 

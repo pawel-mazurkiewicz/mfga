@@ -37,6 +37,8 @@ test("isWord is exact: Follow is a suggestion marker, Following is not", () => {
   assert.ok(isWord("pymk", "Osoby, które możesz znać"));
   assert.ok(isWord("reels", "Rolki"));
   assert.ok(isWord("stories", "Relacje"));
+  assert.ok(isWord("ai", "Informacje o SI"));
+  assert.ok(isWord("ai", "Informacje SI"), "both AI-label wordings in Facebook's Polish strings");
   assert.equal(isWord("nonexistent", "Follow"), false);
 });
 

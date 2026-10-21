@@ -74,7 +74,7 @@ export const CORE = Object.freeze({
     groupSuggestions: ["Proponowane grupy"], // dictionary (zbluebugz 2022)
     suggestedPanels: ["Wydarzenia, które mogą Ci się spodobać", "Proponowane wydarzenia"], // dictionary
     suggestedHeaders: ["Propozycje dla Ciebie", "Proponowane dla Ciebie", "Polecany post", "Proponowany post z grupy publicznej"],
-    ai: ["Informacje o SI"],
+    ai: ["Informacje o SI", "Informacje SI"], // both in Facebook's Polish string table
     metaAI: ["Meta AI"],
     memories: ["Wspomnienia"],
   },

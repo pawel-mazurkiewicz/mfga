@@ -1,5 +1,5 @@
 // Boots the 2010 shell on a fixture page the way src/main.js wires it: reader → navigator → layout → shell.
-// Options come from window.__mfgaTest = { helper: boolean, look: {...}, stats: {...} }.
+// Options come from window.__mfgaTest = { helper: boolean, look: {...}, stats: {...}, clearCache: boolean }.
 import { basePlatform } from "../../../src/shared/platform.js";
 import { sanitize } from "../../../src/shared/settings.js";
 import { setLocale } from "../../../src/shared/i18n.js";
@@ -14,6 +14,7 @@ import { createShell } from "../../../src/ui/shell/shell.js";
 
 const cfg = window.__mfgaTest || {};
 const state = { navCalls: [], settingsOpened: 0, routes: [] };
+if (cfg.clearCache) localStorage.removeItem("mfga:rail");
 
 // localStorage-backed storage so the rail cache survives page loads, as chrome.storage / GM storage do.
 const storage = {

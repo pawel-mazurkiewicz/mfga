@@ -76,14 +76,14 @@ async function assertNoJunkText(page, world) {
   for (const j of world.junk) if (j.text) assert.ok(!text.includes(j.text), `junk "${j.text}" is not shown`);
 }
 
-/** GraphQL traffic was well-formed, accepted, paced like a person and strictly sequential. */
-function assertPoliteTraffic(mock, { minGapMs = 1000 } = {}) {
+/** GraphQL traffic was well-formed, accepted and strictly sequential; with `paced`, also ≥ 1 s apart. */
+function assertPoliteTraffic(mock, { paced = false, minGapMs = 1000 } = {}) {
   assert.deepEqual(mock.invalid().map((e) => `${e.friendlyName}: ${e.problems.join("; ")}`), []);
   assert.deepEqual(mock.rejected().map((e) => `${e.friendlyName}: ${e.errorCode} ${e.error}`), [], "no request was rejected");
-  const posts = mock.log.filter((e) => e.method === "POST");
-  const gaps = mock.gaps(posts);
-  assert.ok(gaps.every((g) => g >= minGapMs), `requests at least ${minGapMs} ms apart: ${gaps.join(", ")}`);
   assert.equal(mock.maxInFlight, 1, "one request in flight at a time");
+  if (!paced) return;
+  const gaps = mock.gaps(mock.log.filter((e) => e.method === "POST"));
+  assert.ok(gaps.every((g) => g >= minGapMs), `requests at least ${minGapMs} ms apart: ${gaps.join(", ")}`);
 }
 
 function assertFeedVariables(entries) {
@@ -132,7 +132,7 @@ for (const [target, available, distPath] of TARGETS) {
         assert.ok(mock.feedRequests().every((e) => SOURCE_STYLES.has(e.feedStyle) && e.variables.orderby.join() === "MOST_RECENT"));
         assertFeedVariables(mock.feedRequests());
         await assertNoJunkText(page, world);
-        assertPoliteTraffic(mock);
+        assertPoliteTraffic(mock, { paced: true });
         assertNoPageErrors(page);
         await shot(page, target, "home");
       });
@@ -151,7 +151,7 @@ for (const [target, available, distPath] of TARGETS) {
         const more = site.mock.feedRequests().slice(requestsBefore);
         assert.ok(more.length >= 1, "loading more made requests");
         assert.ok(more.every((e) => e.offset > 0), "later pages continue from cursors");
-        assertPoliteTraffic(site.mock);
+        assertPoliteTraffic(site.mock, { paced: true });
         await assertNoJunkText(page, site.world);
         assertNoPageErrors(page);
         await shot(page, target, "older-posts");

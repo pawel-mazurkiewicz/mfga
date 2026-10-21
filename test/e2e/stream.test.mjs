@@ -548,6 +548,7 @@ describe("stream: feed view", () => {
     await page.waitForTimeout(1200);
     assert.equal(await more(), before + 1, "only the page requested before the stream was hidden");
     await page.evaluate(() => (document.getElementById("mfga-stream").style.display = ""));
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight)); // hiding reset the scroll
     await page.waitForFunction((n) => window.__calls.filter((c) => c.name === "more").length > n, before + 1);
     await finish(page);
   });

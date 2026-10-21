@@ -54,10 +54,20 @@ export function findMain(doc = document) {
   return [...doc.querySelectorAll('[role="main"]')].find((m) => !m.closest('[role="dialog"]')) || null;
 }
 
-/** A photo/post push view (route dialog) is open over the page. */
+/**
+ * A photo/post push view (route dialog) is open over the page. Hovercards, menus, pickers and docked chat
+ * windows are dialogs inside the root too, but they are narrow or off to the side; a push view spans the
+ * middle of the viewport.
+ */
 export function pushViewOpen(doc = document) {
   const root = mountRoot(doc);
-  return !!root && [...root.querySelectorAll('[role="dialog"]')].some((d) => !d.closest('[role="banner"]'));
+  if (!root) return false;
+  const mid = doc.documentElement.clientWidth / 2;
+  return [...root.querySelectorAll('[role="dialog"]')].some((d) => {
+    if (d.closest('[role="banner"]')) return false;
+    const r = d.getBoundingClientRect();
+    return r.width >= PUSH_VIEW_MIN_WIDTH && r.left <= mid && r.right >= mid;
+  });
 }
 
 /** Facebook's top banner (not a push view's, never ours). */

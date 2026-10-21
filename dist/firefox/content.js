@@ -8044,12 +8044,21 @@ ${docId}`;
       const spec = feedSpec(route, s);
       const names = mode === "top" ? ["top"] : route.filter ? spec.sources : sources?.length ? sources : spec.sources;
       const scale = Math.max(2, Math.round(globalThis.devicePixelRatio || 1));
-      currentFeed = createMergedFeed({
+      const feed = createMergedFeed({
         sources: names.map((name) => createFeedSource({ name, client, ops, harvest, classifier, scale })),
         pageSize: s.feed.pageSize,
         keywords: s.feed.keywords
       });
-      return currentFeed;
+      const more = feed.more;
+      feed.more = async (...args) => {
+        try {
+          return await more(...args);
+        } finally {
+          shell?.update?.({});
+        }
+      };
+      currentFeed = feed;
+      return feed;
     }
     function openComposer() {
       for (const sel of COMPOSER_SELECTORS) {

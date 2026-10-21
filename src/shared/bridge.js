@@ -3,7 +3,10 @@
 
 const PREFIX = "mfga:";
 
-/** Isolated-world side. `channel` is a random id shared with the helper via <html data-mfga-channel>. */
+/** Both scripts run at document_start in unspecified order, so the channel name is a constant. */
+export const BRIDGE_CHANNEL = "v1";
+
+/** Isolated-world side. */
 export function createBridgeClient(channel, { timeoutMs = 4000 } = {}) {
   let seq = 0;
   const pending = new Map();

@@ -48,7 +48,7 @@ export function likeSentence(count, liked) {
   return n ? withLink(t("ufi.peopleLike", { n }), t("ufi.people", { n })) : [];
 }
 
-/** Reasons of src/data/classify.js that are advertising; every other drop reason is a "suggestion". */
+/** Drop reasons of src/data/classify.js that are advertising. */
 const AD_REASONS = new Set([
   "sponsored-data",
   "sponsored-label",
@@ -59,22 +59,27 @@ const AD_REASONS = new Set([
   "unit:MarketplaceFeedAdStory",
   "unit:AdsSideFeedUnit",
 ]);
-const NOT_HIDDEN = new Set(["keep", "no-node", "ai", "keyword"]);
+/** Drop reasons that are suggestions; other units and categories count too. Anything else (keep, no-node,
+ * keyword, unparsed, and counters such as merge's emitted/duplicates) is not a hidden ad or suggestion. */
+const SUGGESTION_REASONS = new Set(["unconnected", "recommended", "follow-suggestion", "join-suggestion"]);
+const isSuggestion = (reason) => SUGGESTION_REASONS.has(reason) || /^(unit|category):/.test(reason);
+const isMap = (v) => v != null && typeof v === "object" && !Array.isArray(v);
 
 /**
  * ctx.hiddenStats() -> {ads, suggested}. Accepts {ads, suggested}, a classifier reason map
- * ({"sponsored-data": 2, "recommended": 3, ...}) or {dropped: <reason map>}.
+ * ({"sponsored-data": 2, "recommended": 3, ...}), {dropped: <reason map>} or merge.stats()'s
+ * {hidden: <reason map>, emitted, duplicates, ...}.
  */
 export function hiddenCounts(stats) {
-  if (!stats || typeof stats !== "object") return { ads: 0, suggested: 0 };
+  if (!isMap(stats)) return { ads: 0, suggested: 0 };
   const num = (v) => (Number.isFinite(v) && v > 0 ? v : 0);
   if ("ads" in stats || "suggested" in stats) return { ads: num(stats.ads), suggested: num(stats.suggested) };
-  const reasons = stats.dropped && typeof stats.dropped === "object" ? stats.dropped : stats;
+  const reasons = [stats.dropped, stats.hidden].find(isMap) ?? stats;
   let ads = 0;
   let suggested = 0;
   for (const [reason, n] of Object.entries(reasons)) {
     if (AD_REASONS.has(reason)) ads += num(n);
-    else if (!NOT_HIDDEN.has(reason)) suggested += num(n);
+    else if (isSuggestion(reason)) suggested += num(n);
   }
   return { ads, suggested };
 }
@@ -153,6 +158,20 @@ export function truncateSegments(segments, { keep = 400, max = 520 } = {}) {
     break;
   }
   return { visible, truncated: true };
+}
+
+/**
+ * Facebook's headline titles start with the actor's name ("Carol Nowak added 23 new photos to the album
+ * Wedding."). Returns what follows the name (with its leading space) so the name is shown once, as the
+ * actor link; "" when the title is just the name; null when the title is not such a headline (a group
+ * post title, for example).
+ */
+export function titleTail(story) {
+  const name = story?.actors?.[0]?.name;
+  const title = typeof story?.title === "string" ? story.title.trim() : "";
+  if (!name || !title.startsWith(name)) return null;
+  const tail = title.slice(name.length);
+  return /^[\p{L}\p{N}]/u.test(tail) ? null : tail;
 }
 
 /**

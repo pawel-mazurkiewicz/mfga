@@ -5,7 +5,7 @@
 //   const page = await p.open("/");      // p.site.mock.log, p.site.world …
 //   await p.close();
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { ROOT, launchBrowser } from "./browser.mjs";
 import { installSite } from "./site.mjs";
@@ -17,6 +17,28 @@ export const DIST = Object.freeze({
 });
 export const hasUserscript = () => existsSync(DIST.userscript);
 export const hasExtension = () => existsSync(path.join(DIST.extension, "manifest.json"));
+
+const RESULTS = path.join(ROOT, "test-results");
+/** Extension profiles launchBrowser() made in this process: test-results/udd-<pid>-<timestamp>. */
+const ownProfiles = () => (existsSync(RESULTS) ? readdirSync(RESULTS).filter((n) => n.startsWith(`udd-${process.pid}-`)) : []);
+
+/**
+ * launchBrowser() whose close() also deletes the extension profile the launch created (browser.mjs keeps
+ * them, a few MB each). Launches within one process must not overlap; every caller awaits them.
+ */
+export async function launchTidyBrowser(opts) {
+  const before = new Set(ownProfiles());
+  const b = await launchBrowser(opts);
+  const created = ownProfiles().filter((n) => !before.has(n));
+  return {
+    ...b,
+    profiles: created.map((n) => path.join(RESULTS, n)),
+    async close() {
+      await b.close();
+      for (const n of created) rmSync(path.join(RESULTS, n), { recursive: true, force: true, maxRetries: 3 });
+    },
+  };
+}
 
 /**
  * Tampermonkey-like GM_* / GM.* shim (@sandbox raw: the script runs in the page world). Values live in
@@ -71,7 +93,7 @@ export function userscriptInit(source, { timing = "document-element", ...opts } 
  * userscriptInit).
  */
 export async function launchProduct(target, siteOpts = {}, { viewport, timing } = {}) {
-  const b = await launchBrowser(target === "extension" ? { extensionPath: DIST.extension, viewport } : { viewport });
+  const b = await launchTidyBrowser(target === "extension" ? { extensionPath: DIST.extension, viewport } : { viewport });
   const site = await installSite(b, siteOpts);
   if (target === "userscript") await b.context.addInitScript({ content: userscriptInit(readFileSync(DIST.userscript, "utf8"), { timing }) });
   return {

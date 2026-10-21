@@ -38,6 +38,8 @@ const FEED_SOURCES = ["friends", "groups", "pages", "favorites"];
 // is far busier. Everything after the first page is user-paced ("Older Posts" or scrolling to the end).
 const REQUEST_GAP_MS = 1000;
 const LAST_SEEN_KEY = "mfga:lastSeen";
+// dom-chrome §6: c_user (i_user while acting as a Page) is readable from document.cookie whenever someone is signed in.
+const SIGNED_IN_COOKIE = /(?:^|;\s*)(?:c_user|i_user)=\d+/;
 const COMPOSER_SELECTORS = ['[role="region"][aria-label="Create a post"] [role="button"]', '[role="region"][aria-label="Utwórz post"] [role="button"]'];
 
 registerStrings({
@@ -93,6 +95,20 @@ function paint(style, s) {
   if (!style.isConnected) (document.head || document.documentElement).appendChild(style);
 }
 
+/** The settings as the layout sees them when nobody is signed in: Facebook's own page, no 2010 shell. */
+function withoutShell(settings) {
+  return {
+    get() {
+      const s = settings.get();
+      return { ...s, look: { ...s.look, shell: false } };
+    },
+    subscribe: (fn) => settings.subscribe(fn),
+  };
+}
+
+/** A CSRF token from the page helper: a short printable string, or null. */
+const pageToken = (v) => (typeof v === "string" && /^[\x21-\x7e]{1,255}$/.test(v) ? v : null);
+
 /** "Ad" and "suggestion" totals for the right column, from our feed and Facebook's cleaned feeds. */
 function removalStats(feed, cleaner) {
   const fromFeed = hiddenCounts(feed?.stats?.() ?? {});
@@ -134,6 +150,8 @@ export async function boot(platform) {
     }),
   );
   const lastSeen = Number(await platform.storage.get(LAST_SEEN_KEY).catch(() => 0)) || 0;
+  // Some managers start us before <html> exists; the layout, reader and shell need it from creation on.
+  await new Promise((resolve) => onRoot(resolve));
   health.fact("platform", { kind: platform.kind, version: platform.version, ...(platform.diagnostics || {}) });
 
   const app = createApp({ platform, settings, harvest, style, lastSeen });
@@ -154,6 +172,13 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
   const S = () => settings.get();
   let route = classifyRoute();
   let started = false;
+  // Signed out (the login page, public pages after Log Out): the 2010 theme over Facebook's own page only. No
+  // shell (its bar would cover Facebook's login form), no News Feed and nothing account-specific is shown.
+  const signedOut = !SIGNED_IN_COOKIE.test(document.cookie || "") && !harvest?.tokens?.userId;
+  // The page helper (requireLazy probes, token reads, in-app navigation) is used only while the user allows it.
+  const pagePlatform = Object.create(platform, {
+    page: { get: () => (S().advanced.mainWorldHelper ? platform.page : null) },
+  });
 
   // Data layer (only usable when the harvester runs).
   const client = harvest
@@ -171,23 +196,25 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
         },
         refreshTokens: async () => {
           harvest.refresh?.();
-          const fresh = await platform.page?.readTokens?.().catch(() => null);
-          if (fresh?.dtsg) harvest.tokens.dtsg = fresh.dtsg;
-          if (fresh?.lsd) harvest.tokens.lsd = fresh.lsd;
+          const fresh = await pagePlatform.page?.readTokens?.().catch(() => null);
+          const dtsg = pageToken(fresh?.dtsg);
+          const lsd = pageToken(fresh?.lsd);
+          if (dtsg) harvest.tokens.dtsg = dtsg;
+          if (lsd) harvest.tokens.lsd = lsd;
         },
       })
     : null;
-  const ops = harvest ? createOpRegistry({ platform, harvest }) : null;
+  const ops = harvest ? createOpRegistry({ platform: pagePlatform, harvest }) : null;
   const actions = client ? createActions({ client, ops, harvest }) : null;
   let classifier = createClassifier({ hideAI: S().feed.hideAI });
 
   // Facebook's chrome and navigation.
-  const navigator = createNavigator({ platform });
+  const navigator = createNavigator({ platform: pagePlatform });
   const reader = createChromeReader({
     platform,
     identityHint: () => (harvest?.tokens?.userId ? { id: harvest.tokens.userId, name: harvest.tokens.name || null } : null),
   });
-  const layout = createLayout({ settings });
+  const layout = createLayout({ settings: signedOut ? withoutShell(settings) : settings });
 
   let shell = null;
   let cleaner = null;
@@ -315,7 +342,7 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
   /** Can we render this feed ourselves? Needs the home-feed query descriptor with its variables. */
   async function canUseOurFeed() {
     if (!client || !ops || client.halted) return false;
-    if (!S().look.shell) return false;
+    if (!S().look.shell || signedOut || !harvest.tokens.userId) return false;
     const op = await ops.get(FEED_QUERY).catch(() => null);
     return !!op?.variables;
   }
@@ -391,7 +418,7 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
     paint(style, S());
     const s = S();
     layout.apply(route);
-    if (s.look.shell) {
+    if (s.look.shell && !signedOut) {
       shell = safe("shell", () =>
         createShell({
           settings,

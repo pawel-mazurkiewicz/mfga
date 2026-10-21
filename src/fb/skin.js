@@ -36,9 +36,12 @@ function findName(root) {
   return [...root.querySelectorAll('[data-ad-rendering-role="profile_name"]')].find((n) => !n.querySelector("h5") && notInComment(n)) ?? null;
 }
 
-/** The post's own message: before any embedded post's h5 header. */
+/**
+ * The post's own message: before any embedded post's h5 header. A rich-text message's own headings (h5, h6;
+ * live 2026-10) sit inside the message and are not a shared post.
+ */
 function findMessage(root) {
-  const embedded = root.querySelector("h5");
+  const embedded = [...root.querySelectorAll("h5")].find((h) => !h.closest('[data-ad-rendering-role="story_message"]'));
   const msg = root.querySelector('[data-ad-rendering-role="story_message"]');
   return msg && (!embedded || before(msg, embedded)) && notInComment(msg) ? msg : null;
 }
@@ -82,7 +85,11 @@ function findComments(root, avoid) {
   return box && !avoid.some((a) => box.contains(a)) ? box : climbUntil(top[0], avoid, root);
 }
 
-/** Sections between the header and the footer that are not the message: photos, videos, link cards, shares. */
+/**
+ * Sections between the header and the footer that are not the message: photos, videos, link cards, shares.
+ * On the live page (2026-10) the message and its photo or link card share one wrapper; there the sections
+ * that follow the message inside that wrapper are the attachments.
+ */
 function findAttachments(root, name, message, footer) {
   if (!name || !footer) return [];
   const lca = commonAncestor(name, footer);
@@ -90,9 +97,19 @@ function findAttachments(root, name, message, footer) {
   const head = childOf(lca, name);
   const foot = childOf(lca, footer);
   const out = [];
+  const section = (c) => c.getAttribute("aria-hidden") !== "true" && c.firstElementChild != null;
   for (let c = head?.nextElementSibling; c && c !== foot; c = c.nextElementSibling) {
-    if (c.getAttribute("aria-hidden") === "true" || (message && c.contains(message)) || !c.firstElementChild) continue;
-    out.push(c);
+    if (message && c.contains(message)) out.push(...afterMessage(message, c).filter(section));
+    else if (section(c)) out.push(c);
+  }
+  return out;
+}
+
+/** Inside `box`, in document order: what follows the message and each of its ancestors below `box`. */
+function afterMessage(message, box) {
+  const out = [];
+  for (let el = message; el && el !== box; el = el.parentElement) {
+    for (let s = el.nextElementSibling; s; s = s.nextElementSibling) out.push(s);
   }
   return out;
 }

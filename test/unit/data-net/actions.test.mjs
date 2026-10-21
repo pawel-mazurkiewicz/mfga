@@ -141,7 +141,7 @@ test("without story tracking the tracking list is empty", async () => {
   assert.deepEqual(client.calls[1].variables.input.tracking, []);
 });
 
-test("a learned capture is the template: its keys and values are kept, only per-call ids replaced", async () => {
+test("a learned capture is the template: its keys and values are kept, only per-call and per-page ids replaced", async () => {
   const learned = {
     input: { feedback_id: "OLD", feedback_reaction_id: "OLD", client_mutation_id: "9", tracking: ["OLD"], session_id: "fb-session", new_field_2027: 1 },
     scale: 2,
@@ -150,7 +150,7 @@ test("a learned capture is the template: its keys and values are kept, only per-
   const { actions, client } = setup({ table: { [ACTION_OPS.react]: [{ docId: "99999999999999999", variables: learned, source: "learned", fresh: true }] } });
   await actions.react(STORY, REACTIONS.LOVE);
   assert.deepEqual(client.calls[0].variables, {
-    input: { feedback_id: STORY.feedback.id, feedback_reaction_id: REACTIONS.LOVE, client_mutation_id: "1", tracking: [STORY.tracking], session_id: "fb-session", new_field_2027: 1 },
+    input: { feedback_id: STORY.feedback.id, feedback_reaction_id: REACTIONS.LOVE, client_mutation_id: "1", tracking: [STORY.tracking], session_id: UUIDS[0], new_field_2027: 1 },
     scale: 2,
     __relay_internal__pv__NewProviderrelayprovider: true,
   });
@@ -163,8 +163,44 @@ test("a learned comment capture keeps its composer tracking entry and its own gr
   await actions.comment(STORY, "hi");
   const v = client.calls[0].variables;
   assert.equal(v.groupID, null);
-  assert.deepEqual(v.input.tracking, [STORY.tracking, COMMENT_SAMPLE.variables.input.tracking[1]]);
-  assert.equal(v.input.attribution_id_v2, COMMENT_SAMPLE.variables.input.attribution_id_v2);
+  const composer = JSON.parse(COMMENT_SAMPLE.variables.input.tracking[1]);
+  assert.deepEqual(v.input.tracking, [STORY.tracking, JSON.stringify({ ...composer, conversation_guide_session_id: UUIDS[2] })]);
+  assert.equal(v.input.attribution_id_v2, ATTRIBUTION);
+});
+
+test("learned captures never replay the captured page's session ids, start times or navigation chain", async () => {
+  const capturedReact = structuredClone(REACT_SAMPLE.variables_LIKE);
+  const capturedComment = structuredClone(COMMENT_SAMPLE.variables);
+  const { actions, client } = setup({
+    table: {
+      [ACTION_OPS.react]: [{ docId: "99999999999999999", variables: capturedReact, source: "learned", fresh: true }],
+      [ACTION_OPS.comment]: [{ docId: "88888888888888888", variables: capturedComment, source: "learned", fresh: true }],
+    },
+  });
+  await actions.react(STORY, REACTIONS.LIKE);
+  await actions.comment(GROUP_STORY, "hi");
+  const [react, comment] = client.calls.map((c) => c.variables.input);
+  for (const input of [react, comment]) {
+    assert.deepEqual(
+      [input.session_id, input.downstream_share_session_id, input.downstream_share_session_start_time, input.attribution_id_v2],
+      [UUIDS[0], UUIDS[1], String(NOW), ATTRIBUTION],
+    );
+  }
+  const sent = JSON.stringify(client.calls.map((c) => c.variables));
+  for (const old of [
+    capturedReact.input.session_id,
+    capturedReact.input.downstream_share_session_id,
+    capturedReact.input.downstream_share_session_start_time,
+    capturedComment.input.session_id,
+    capturedComment.input.downstream_share_session_id,
+    capturedComment.input.downstream_share_session_start_time,
+    "1789729322369",
+    "1789727958490",
+    JSON.parse(capturedComment.input.tracking[1]).conversation_guide_session_id,
+  ]) {
+    assert.equal(sent.includes(old), false, `${old} is not replayed`);
+  }
+  assert.equal(JSON.parse(comment.tracking[1]).conversation_guide_session_id, UUIDS[2]);
 });
 
 test("react reconciles from the echo", async () => {
@@ -258,7 +294,22 @@ test("comments(): documented variables, paged by cursor, parsed from the Feedbac
   assert.deepEqual(res.comments.map((c) => c.text), ["one", "two"]);
   assert.equal(res.cursor, "NEXT");
   assert.equal(res.hasMore, true);
-  assert.deepEqual(client.calls[0].variables, { commentsAfterCount: -1, commentsAfterCursor: null, feedLocation: "POST_PERMALINK_DIALOG", id: STORY.feedback.id });
+  // Without a learned capture: every argument of Facebook's artifact, its two provided variables included (a
+  // missing __relay_internal__pv__ key fails the request with "A server error occurred").
+  assert.deepEqual(client.calls[0].variables, {
+    commentsAfterCount: -1,
+    commentsAfterCursor: null,
+    commentsBeforeCount: null,
+    commentsBeforeCursor: null,
+    commentsIntentToken: null,
+    feedLocation: "POST_PERMALINK_DIALOG",
+    focusCommentID: null,
+    id: STORY.feedback.id,
+    scale: 1,
+    useDefaultActor: false,
+    __relay_internal__pv__CometUFICommentAvatarStickerAnimatedImagerelayprovider: false,
+    __relay_internal__pv__IsWorkUserrelayprovider: false,
+  });
   await actions.comments(STORY, "NEXT");
   assert.equal(client.calls[1].variables.commentsAfterCursor, "NEXT");
 });

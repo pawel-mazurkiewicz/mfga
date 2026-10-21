@@ -135,6 +135,16 @@ test("a persisted cache survives into a new page; entries older than 30 days are
   assert.equal(await registry.get("Broken"), null);
 });
 
+test("a stored \"__proto__\" entry (page-writable storage) cannot replace the cache's prototype", async () => {
+  const now = 1_800_000_000_000;
+  const stored = JSON.parse(`{"__proto__": {"docId": "77777777777777777", "seenAt": ${now}}}`);
+  const { registry, platform } = setup({ stored });
+  assert.equal((await registry.get(OP)).source, "fallback", "nothing is inherited from the stored entry");
+  assert.equal(await registry.get("docId"), null);
+  await registry.learn(OP, "44444444444444444", null);
+  assert.equal(Object.getPrototypeOf(await platform.storage.get(OPS_STORAGE_KEY)), Object.prototype);
+});
+
 test("learn() and the background compete by recency; learning an id un-invalidates it", async () => {
   let t = 1_800_000_000_000;
   const learned = { [OP]: { docId: "22222222222222222", variables: null, seenAt: t - 5000 } };

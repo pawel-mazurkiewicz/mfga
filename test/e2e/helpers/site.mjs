@@ -88,7 +88,7 @@ export async function installSite(b, { locale = "en", now, fetchSize = 4, delayM
   const tokens = makeTokens(world);
   const mock = createMockGraphql({ world, tokens, delayMs, acceptDossierDocIds });
   const documents = [];
-  const render = (kind, opts = {}) => renderPage(kind, { world, tokens, locale, fetchSize, ...opts });
+  const render = (kind, opts = {}) => renderPage(kind, { world, tokens, locale, fetchSize, docIds: mock.docIds, ...opts });
   const staticFor = staticFile(mock);
 
   b.route((u) => u.hostname === "www.facebook.com" && u.pathname === "/api/graphql/", mock.handle);

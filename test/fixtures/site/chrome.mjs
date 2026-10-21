@@ -83,8 +83,9 @@ function tab(ctx, key, href, icon, { active = false, count = 0 } = {}) {
 }
 
 /**
- * [role=banner] (dom-chrome §2.1). `activeTab` marks the current centre tab; `layers` go into the end
- * section's contextual layer root, where Facebook renders the jewel dropdowns.
+ * [role=banner] (dom-chrome §2.1): start section (logo, search), centre tabs, end section. `activeTab` marks the
+ * current centre tab; `layers` go into the end section's contextual layer root, where Facebook renders the jewel
+ * dropdowns.
  */
 export function banner(ctx, { activeTab = "home", layers = [] } = {}) {
   const { s, world } = ctx;
@@ -92,6 +93,12 @@ export function banner(ctx, { activeTab = "home", layers = [] } = {}) {
   return el(
     "div",
     { role: "banner", class: C.banner },
+    el(
+      "div",
+      { class: C.bannerStart },
+      el("a", { "aria-label": s.facebook, href: "/", role: "link", tabindex: 0 }, el("svg", { viewBox: "0 0 36 36", class: C.logo, fill: "#0866ff", height: 40, width: 40 }, el("path", { d: "M20.2 35.8V23.2h4.2l.7-4.9h-4.9v-3.2c0-1.4.4-2.4 2.4-2.4h2.6V8.4a34 34 0 0 0-3.8-.2c-3.7 0-6.3 2.3-6.3 6.5v3.6h-4.2v4.9h4.2v12.6A18 18 0 1 1 20.2 35.8z" }))),
+      el("div", { class: C.search }, svgIcon("search", { size: 16 }), el("label", el("input", { type: "search", role: "combobox", "aria-label": s.search, placeholder: s.search, "aria-autocomplete": "list", "aria-expanded": "false", autocomplete: "off", spellcheck: "false", dir: "ltr", class: C.searchInput, value: "" }))),
+    ),
     el(
       "div",
       { class: C.bannerTabs },
@@ -108,12 +115,6 @@ export function banner(ctx, { activeTab = "home", layers = [] } = {}) {
           tab(ctx, "marketplace", "/marketplace/?ref=app_tab", "marketplace", { active: activeTab === "marketplace" }),
         ),
       ),
-    ),
-    el(
-      "div",
-      { class: C.bannerStart },
-      el("a", { "aria-label": s.facebook, href: "/", role: "link", tabindex: 0 }, el("svg", { viewBox: "0 0 36 36", class: C.logo, fill: "#0866ff", height: 40, width: 40 }, el("path", { d: "M20.2 35.8V23.2h4.2l.7-4.9h-4.9v-3.2c0-1.4.4-2.4 2.4-2.4h2.6V8.4a34 34 0 0 0-3.8-.2c-3.7 0-6.3 2.3-6.3 6.5v3.6h-4.2v4.9h4.2v12.6A18 18 0 1 1 20.2 35.8z" }))),
-      el("div", { class: C.search }, svgIcon("search", { size: 16 }), el("label", el("input", { type: "search", role: "combobox", "aria-label": s.search, placeholder: s.search, "aria-autocomplete": "list", "aria-expanded": "false", autocomplete: "off", spellcheck: "false", dir: "ltr", class: C.searchInput, value: "" }))),
     ),
     el(
       "div",

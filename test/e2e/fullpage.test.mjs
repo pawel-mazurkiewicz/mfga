@@ -61,13 +61,13 @@ const shellShown = (page) =>
     }),
   );
 
-/** Waits until the mock has answered one more `name` request than `before`; returns that request. */
+/** Waits until the mock has answered one more `name` request (any, when null) than `before`; returns that request. */
 async function waitForNewRequest(mock, name, before, timeout = 20000) {
   const end = Date.now() + timeout;
   for (;;) {
     const answered = mock.requests(name).filter((e) => e.end);
     if (answered.length > before) return answered[before];
-    if (Date.now() > end) throw new Error(`no new ${name} request within ${timeout} ms`);
+    if (Date.now() > end) throw new Error(`no new ${name || "GraphQL"} request within ${timeout} ms`);
     await new Promise((r) => setTimeout(r, 100));
   }
 }
@@ -383,17 +383,20 @@ for (const [target, available, distPath] of TARGETS) {
     test("a checkpoint answer stops every further request", { timeout: TIMEOUT }, async () => {
       await withProduct(target, {}, async ({ site, open }) => {
         const page = await open("/");
-        await waitForStories(page, 3);
+        await waitForStories(page, 10);
+        const older = page.locator("#mfga-stream").getByRole("button", { name: "Older Posts" });
+        await older.waitFor();
         site.mock.inject.checkpoint = "html";
         const from = site.mock.log.length;
-        await page.locator("#mfga-stream").getByRole("button", { name: "Older Posts" }).click();
+        await older.click();
+        const hit = await waitForNewRequest(site.mock, null, from);
+        assert.equal(hit.injected, "checkpoint-html", "the next request met the checkpoint");
         await page.waitForTimeout(6000);
-        const afterCheckpoint = site.mock.log.slice(from).length;
-        assert.ok(afterCheckpoint <= 1, `at most the request that hit the checkpoint (${afterCheckpoint})`);
+        assert.equal(site.mock.log.length - from, 1, "only the request that met the checkpoint was sent");
         const retry = page.locator("#mfga-stream").getByRole("button", { name: /Older Posts|Try Again/ });
         if (await retry.count()) await retry.first().click();
         await page.waitForTimeout(4000);
-        assert.equal(site.mock.log.length - from, afterCheckpoint, "nothing is sent after the checkpoint");
+        assert.equal(site.mock.log.length - from, 1, "nothing is sent after the checkpoint");
         assertNoPageErrors(page);
       });
     });

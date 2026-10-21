@@ -2,7 +2,7 @@
 //
 //   const mock = createMockGraphql({ world, tokens });
 //   b.route((u) => u.pathname === "/api/graphql/", mock.handle);   // Playwright route handler
-//   mock.log            every request: time, op, variables, validation problems, served stories
+//   mock.log            every request: time, op, variables, validation problems, served stories, injected answer
 //   mock.inject         error switches: { staleDoc, tokenError, softBlock, serverError: <count>, checkpoint: "html"|"redirect"|null }
 //
 // Validation follows graphql-protocol §2: form body, doc_id known for the friendly name, fb_dtsg/lsd equal to
@@ -184,7 +184,7 @@ export function createMockGraphql({ world = createWorld(), tokens = makeTokens(w
 
   /** Pure request -> response step (also used directly by node tests). */
   function respond({ method = "POST", headers = {}, body = "" }) {
-    const entry = { seq: ++seq, at: Date.now(), end: null, method, friendlyName: null, docId: null, variables: null, form: null, headers, status: 200, errorCode: null, error: null, problems: [], valid: false, concurrent: inFlight > 1 };
+    const entry = { seq: ++seq, at: Date.now(), end: null, method, friendlyName: null, docId: null, variables: null, form: null, headers, status: 200, errorCode: null, error: null, injected: null, problems: [], valid: false, concurrent: inFlight > 1 };
     if (entry.concurrent) entry.problems.push("sent while another request was in flight");
     log.push(entry);
     const done = (res) => {
@@ -196,15 +196,20 @@ export function createMockGraphql({ world = createWorld(), tokens = makeTokens(w
     entry.form = Object.fromEntries(form);
     entry.friendlyName = form.get("fb_api_req_friendly_name");
     entry.docId = form.get("doc_id");
-    if (inject.checkpoint === "redirect") return done(html(302, "", { location: CHECKPOINT_URL }));
-    if (inject.checkpoint === "html") return done(html(200, `<!DOCTYPE html><html><body><script type="application/json">{"is_checkpointed":true}</script><h1>${CHECKPOINT_MARKER}</h1></body></html>`));
+    // Injected answers replace the server's: the request is not judged, and the entry says what it got.
+    const injected = (kind, res) => {
+      entry.injected = kind;
+      return done(res);
+    };
+    if (inject.checkpoint === "redirect") return injected("checkpoint-redirect", html(302, "", { location: CHECKPOINT_URL }));
+    if (inject.checkpoint === "html") return injected("checkpoint-html", html(200, `<!DOCTYPE html><html><body><script type="application/json">{"is_checkpointed":true}</script><h1>${CHECKPOINT_MARKER}</h1></body></html>`));
     if (inject.serverError > 0) {
       inject.serverError--;
-      return done(html(500, ""));
+      return injected("server-error", html(500, ""));
     }
     if (inject.softBlock > 0) {
       inject.softBlock--;
-      return done(html(200, ""));
+      return injected("soft-block", html(200, ""));
     }
     let text;
     try {
@@ -215,7 +220,12 @@ export function createMockGraphql({ world = createWorld(), tokens = makeTokens(w
       entry.variables = parseVariables(form);
       text = server(entry, entry.variables);
     } catch (err) {
-      if (!(err instanceof Rejection)) throw err;
+      if (!(err instanceof Rejection)) {
+        // A bug in the mock or its fixtures: answer like a crashed server instead of leaving the request hanging.
+        entry.error = String(err?.stack || err);
+        entry.problems.push(`mock crashed: ${err?.message || err}`);
+        return done(html(500, ""));
+      }
       entry.errorCode = err.code;
       entry.error = err.message;
       text = JSON.stringify(gqlError(err.code, err.summary, err.message));
@@ -260,7 +270,9 @@ export function createMockGraphql({ world = createWorld(), tokens = makeTokens(w
     },
     requests: (name) => log.filter((e) => !name || e.friendlyName === name),
     feedRequests: () => log.filter((e) => e.friendlyName === "CometModernHomeFeedQuery" || e.friendlyName === "CometNewsFeedPaginationQuery"),
-    invalid: () => log.filter((e) => e.method === "POST" && !e.valid && !e.errorCode),
+    /** Requests that broke the protocol (see `problems`); rejected and injected answers are listed elsewhere. */
+    invalid: () => log.filter((e) => e.method === "POST" && !e.errorCode && e.problems.length > 0),
+    injected: () => log.filter((e) => e.injected),
     rejected: () => log.filter((e) => e.errorCode),
     /** Milliseconds between consecutive POSTs (start to start). */
     gaps(entries = log.filter((e) => e.method === "POST")) {

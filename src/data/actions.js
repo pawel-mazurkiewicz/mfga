@@ -47,6 +47,33 @@ export function createSessionIds({ uuid = realUuid, now = Date.now, random = Mat
   };
 }
 
+/**
+ * This page's session fields. A learned capture carries the session, share session and navigation chain of the
+ * page it was captured on, possibly days ago or another account's: replaying them would send the same stale ids
+ * with every Like and comment, which no real client does and which links accounts on a shared browser.
+ */
+function sessionFields(ids) {
+  return {
+    session_id: ids.sessionId,
+    downstream_share_session_id: ids.shareSessionId,
+    downstream_share_session_start_time: ids.startTime,
+    attribution_id_v2: ids.attribution,
+  };
+}
+
+/** A plain-JSON tracking entry of a capture (composer info) with this page's conversation-guide session. */
+function freshTrackingEntry(entry, ids) {
+  let o;
+  try {
+    o = JSON.parse(entry);
+  } catch {
+    return null;
+  }
+  if (!isObject(o)) return null;
+  if (ids && "conversation_guide_session_id" in o) o.conversation_guide_session_id = ids.assistantSessionId;
+  return JSON.stringify(o);
+}
+
 /** CometUFIFeedbackReactMutation variables, 2026-09 capture shape (samples/mutation-CometUFIFeedbackReactMutation). */
 export function reactTemplate(ids) {
   return {
@@ -112,11 +139,12 @@ export function commentTemplate(ids) {
   };
 }
 
-/** p: {feedbackId, reactionId, userId, mutationId, tracking, referrer, originUri} */
+/** p: {feedbackId, reactionId, userId, mutationId, tracking, referrer, originUri, ids} (ids: createSessionIds()) */
 export function reactVariables(template, p) {
   const v = structuredClone(template);
   const input = isObject(v.input) ? v.input : (v.input = {});
   Object.assign(input, { feedback_id: p.feedbackId, feedback_reaction_id: p.reactionId, client_mutation_id: p.mutationId });
+  if (p.ids) assignPresent(input, sessionFields(p.ids));
   assignPresent(input, {
     actor_id: p.userId,
     tracking: p.tracking ? [p.tracking] : [],
@@ -126,7 +154,7 @@ export function reactVariables(template, p) {
   return v;
 }
 
-/** p: {feedbackId, groupId, text, mutationId, idempotenceToken, tracking, originUri} */
+/** p: {feedbackId, groupId, text, mutationId, idempotenceToken, tracking, originUri, ids} (ids: createSessionIds()) */
 export function commentVariables(template, p) {
   const v = structuredClone(template);
   if ("groupID" in v) v.groupID = p.groupId ?? null; // must be the post's own group or null (1357010 otherwise)
@@ -137,8 +165,13 @@ export function commentVariables(template, p) {
     message: { ranges: [], text: p.text },
     idempotence_token: p.idempotenceToken,
   });
-  // Keep the template's plain-JSON tracking entries (composer info); the encrypted entry is the story's own.
-  const plain = (Array.isArray(input.tracking) ? input.tracking : []).filter((s) => typeof s === "string" && s.startsWith("{"));
+  if (p.ids) assignPresent(input, sessionFields(p.ids));
+  // Keep the template's plain-JSON tracking entries (composer info) with this page's session; the encrypted
+  // entry is the story's own.
+  const plain = (Array.isArray(input.tracking) ? input.tracking : [])
+    .filter((s) => typeof s === "string" && s.startsWith("{"))
+    .map((s) => freshTrackingEntry(s, p.ids))
+    .filter(Boolean);
   assignPresent(input, { tracking: p.tracking ? [p.tracking, ...plain] : [], downstream_share_session_origin_uri: p.originUri });
   // A learned capture is someone's own comment: its sticker or photo, styling, video time and reply target are not ours.
   assignPresent(input, { attachments: null, formatting_style: null, vod_video_timestamp: null, reply_comment_parent_fbid: null });
@@ -146,9 +179,30 @@ export function commentVariables(template, p) {
   return v;
 }
 
-/** CommentsListComponentsPaginationQuery variables; the fallback lists only the documented ones (§5.7). */
+/**
+ * CommentsListComponentsPaginationQuery variables without a learned capture: every argument of Facebook's own
+ * artifact (CommentsListComponentsPaginationQuery.graphql, saved pl_PL bundle 2025-10), including its two
+ * provided variables. The server answers "A server error occurred" when a __relay_internal__pv__ key is
+ * missing (graphql-protocol §7.4); their values are the ones of the 2026-09 comment-mutation capture.
+ */
+const COMMENTS_FALLBACK = Object.freeze({
+  commentsAfterCount: -1,
+  commentsAfterCursor: null,
+  commentsBeforeCount: null,
+  commentsBeforeCursor: null,
+  commentsIntentToken: null,
+  feedLocation: "POST_PERMALINK_DIALOG",
+  focusCommentID: null,
+  id: null,
+  scale: 1,
+  useDefaultActor: false,
+  __relay_internal__pv__CometUFICommentAvatarStickerAnimatedImagerelayprovider: false,
+  __relay_internal__pv__IsWorkUserrelayprovider: false,
+});
+
+/** CommentsListComponentsPaginationQuery variables: the learned template, else the fallback (§5.7). */
 export function commentsVariables(template, { feedbackId, cursor }) {
-  const base = isObject(template) ? structuredClone(template) : { commentsAfterCount: -1, commentsAfterCursor: null, feedLocation: "POST_PERMALINK_DIALOG", id: null };
+  const base = isObject(template) ? structuredClone(template) : { ...COMMENTS_FALLBACK };
   return { ...base, id: feedbackId, commentsAfterCursor: cursor ?? null };
 }
 
@@ -202,6 +256,7 @@ export function createActions({ client, ops, harvest, extractComment = realExtra
             tracking: story.tracking,
             referrer: story.url ? referrerOf(story.url) : "/",
             originUri: story.url || "https://www.facebook.com/",
+            ids,
           }),
         );
         if (!res) return { ok: false, error: "unavailable" };
@@ -232,6 +287,7 @@ export function createActions({ client, ops, harvest, extractComment = realExtra
             idempotenceToken: `client:${uuid()}`,
             tracking: story.tracking,
             originUri: story.url || "https://www.facebook.com/",
+            ids,
           }),
         );
         if (!res) return { ok: false, error: "unavailable" };

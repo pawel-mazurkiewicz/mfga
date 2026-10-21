@@ -38,7 +38,6 @@ const RULES = {
   column: "width:100%;max-width:590px",
   list: "margin:0;padding:0;list-style:none",
   railRow: "display:flex;align-items:center;gap:12px;padding:8px;border-radius:8px;color:var(--primary-text);font-weight:500",
-  railImg: "width:36px;height:36px;border-radius:50%;flex:none;object-fit:cover",
   railImgSquare: "width:36px;height:36px;border-radius:8px;flex:none;object-fit:cover",
   railMeta: "display:block;font-size:12px;color:var(--blue-link);font-weight:400",
   railHeader: "display:flex;justify-content:space-between;align-items:center;padding:12px 8px 4px;color:var(--secondary-text);font-size:17px;font-weight:600;margin:0",

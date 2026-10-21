@@ -100,7 +100,9 @@ function readConfig(name, config, sink) {
   if (DTSG_FRAMES.has(name)) {
     if (typeof config.token === "string" && config.token) t.dtsg = config.token;
   } else if (name === "LSD") {
-    if (typeof config.token === "string" && config.token) t.lsd = config.token;
+    // A live page ships three LSD frames, one per SSR block, and Facebook's own requests send the first
+    // (graphql-protocol §2.2; fbk live 2026-09). A newer one only comes through refreshTokens (MAIN world).
+    if (typeof config.token === "string" && config.token && !t.lsd) t.lsd = config.token;
   } else if (name === "CurrentUserInitialData") {
     const id = String(config.USER_ID ?? "");
     if (/^\d+$/.test(id) && id !== "0") t.userId = id;

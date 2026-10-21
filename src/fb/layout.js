@@ -1,7 +1,7 @@
 // Places the 2010 shell around Facebook's page (ARCHITECTURE §5, dom-chrome §1.2/§9):
 // root state on <html>, #mfga-shell inserted before Facebook's mount root, and on the column routes
 // [role=main] clamped and moved into the 980px grid by a measured relative offset. Facebook nodes only ever
-// get data-mfga-* marks; geometry goes through CSS variables in our own <style> element.
+// get data-mfga-* marks; geometry goes through CSS variables in our own <style> element and on our own host.
 import { safe, health, rafBatch } from "../shared/util.js";
 import { DEFAULTS } from "../shared/settings.js";
 import { GRID, mainSlot } from "../ui/shell/grid.js";
@@ -11,6 +11,7 @@ export const HOST_ID = "mfga-shell";
 const VARS_ID = "mfga-layout-vars";
 const ENSURE_MS = 1000;
 const PUSH_VIEW_MIN_WIDTH = 450; // the post dialog is ~680px, the photo viewer full width; hovercards ~360px
+const VARS_EPSILON_PX = 0.1; // re-measurement noise (see changedVars); far below anything visible
 
 const hasColumns = (mode) => mode === "home" || mode === "groups-feed";
 
@@ -52,7 +53,9 @@ export function shellHost(doc = document) {
 
 /** The page's [role=main] column (not one inside a dialog/push view). */
 export function findMain(doc = document) {
-  return [...doc.querySelectorAll('[role="main"]')].find((m) => !m.closest('[role="dialog"]')) || null;
+  // One querySelector, not querySelectorAll + filter: it stops at the column instead of walking the whole
+  // feed below it, and it runs every second (1.6 ms per full walk on a long, 100k-element feed).
+  return doc.querySelector('[role="main"]:not([role="dialog"] *)');
 }
 
 /**
@@ -73,7 +76,7 @@ export function pushViewOpen(doc = document) {
 
 /** Facebook's top banner (not a push view's, never ours). */
 export function findBanner(doc = document) {
-  return [...doc.querySelectorAll('[role="banner"]')].find((b) => !b.closest(`[role="dialog"], #${HOST_ID}`)) || null;
+  return doc.querySelector(`[role="banner"]:not([role="dialog"] *, #${HOST_ID} *)`);
 }
 
 /**
@@ -110,6 +113,19 @@ export function syncObserved(ro, observed, targets) {
   return next;
 }
 
+/**
+ * Which of the written variables a new measurement changes: `geometry` (dx/dy, read by Facebook's [role=main])
+ * and `footer`. Layout snaps positions to 1/64 px, so a fractional offset re-measured after it was applied
+ * comes back a hundredth off (43.66 -> 43.64 -> 43.66 ...): without a tolerance every check would rewrite the
+ * variables, and a rewrite of the :root variables restyles the whole page.
+ */
+export function changedVars(next, applied, eps = VARS_EPSILON_PX) {
+  return {
+    geometry: Math.abs(next.dx - applied.dx) >= eps || Math.abs(next.dy - applied.dy) >= eps,
+    footer: Math.abs(next.footer - applied.footer) >= eps,
+  };
+}
+
 export function createLayout({ settings } = {}) {
   const doc = document;
   const html = doc.documentElement;
@@ -123,15 +139,27 @@ export function createLayout({ settings } = {}) {
   let observed = new Set();
   let timer = 0;
 
+  // dx/dy live in a :root stylesheet because Facebook's [role=main] uses them; they change on resizes and
+  // route changes only. The footer position moves whenever the page grows (feed pages, images, comments), so
+  // it is set on our own host: a custom property changed on :root restyles every element of the page.
+  let footerHost = null;
   const writeVars = (next) => {
-    if (next.dx === vars.dx && next.dy === vars.dy && next.footer === vars.footer && varsEl?.isConnected) return;
-    vars = next;
-    if (!varsEl?.isConnected) {
-      varsEl = doc.getElementById(VARS_ID) || doc.createElement("style");
-      varsEl.id = VARS_ID;
-      (doc.head || html).appendChild(varsEl);
+    const changed = changedVars(next, vars);
+    if (changed.geometry || !varsEl?.isConnected) {
+      vars = { ...vars, dx: next.dx, dy: next.dy };
+      if (!varsEl?.isConnected) {
+        varsEl = doc.getElementById(VARS_ID) || doc.createElement("style");
+        varsEl.id = VARS_ID;
+        (doc.head || html).appendChild(varsEl);
+      }
+      varsEl.textContent = `:root{--mfga-main-dx:${next.dx}px;--mfga-main-dy:${next.dy}px}`;
     }
-    varsEl.textContent = `:root{--mfga-main-dx:${next.dx}px;--mfga-main-dy:${next.dy}px;--mfga-footer-top:${next.footer}px}`;
+    const host = doc.getElementById(HOST_ID);
+    if (changed.footer || (host && host !== footerHost)) {
+      vars = { ...vars, footer: next.footer };
+      footerHost = host;
+      host?.style.setProperty("--mfga-footer-top", `${next.footer}px`);
+    }
   };
 
   const setMarks = (next) => {

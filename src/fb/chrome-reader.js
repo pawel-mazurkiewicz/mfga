@@ -42,18 +42,23 @@ export function jewelKind(label) {
 
 /**
  * Reads the account-controls buttons' labels (in DOM order, focus-helper duplicates removed).
- * Unknown languages fall back to position: [menu, messenger, notifications, profile].
+ * Unknown languages fall back to position, per count: [menu, messenger, notifications, profile].
+ * Unlabelled buttons do not take a position: live 2026 the notification badge ("Number of unread
+ * notifications" + "5") is a button of its own between Notifications and Your profile. A label recognised
+ * as another jewel is never read by position, and "Messenger" keeps its brand name in most languages, so
+ * it alone must not stop the notification count from being read.
  */
 export function countsFromLabels(labels) {
+  const named = labels.map((label) => String(label ?? "")).filter((label) => label.trim());
+  const kinds = named.map(jewelKind);
   const out = { notifications: null, messages: null };
-  for (const label of labels) {
-    const kind = jewelKind(label);
+  named.forEach((label, i) => {
+    const kind = kinds[i];
     if ((kind === "notifications" || kind === "messages") && out[kind] == null) out[kind] = parseCount(label);
-  }
-  if (out.notifications == null && out.messages == null && labels.length >= 3) {
-    out.notifications = parseCount(labels[labels.length - 2]);
-    if (labels.length >= 4) out.messages = parseCount(labels[labels.length - 3]);
-  }
+  });
+  const at = (i) => (kinds[i] == null ? parseCount(named[i]) : null);
+  if (out.notifications == null && named.length >= 3) out.notifications = at(named.length - 2);
+  if (out.messages == null && named.length >= 4) out.messages = at(named.length - 3);
   return out;
 }
 
@@ -165,10 +170,18 @@ export function shortcutsFromRows(rows, { userId = null } = {}) {
   return out;
 }
 
-/** The cache when it has this version and belongs to the signed-in account (shared browsers), else null. */
+/**
+ * The cache when it has this version and belongs to the signed-in account, else null. Nobody signed in (the
+ * login page, after Log Out) uses no cache at all: the next person on a shared computer must not see it.
+ */
 function usableCache(cached, userId) {
-  if (!cached || cached.v !== RAIL_VERSION) return null;
-  return !userId || cached.userId === userId ? cached : null;
+  if (!cached || cached.v !== RAIL_VERSION || !userId) return null;
+  return cached.userId === userId ? cached : null;
+}
+
+/** True when a stored rail must be deleted: nobody is signed in, or it is another account's. */
+export function foreignCache(cached, userId) {
+  return cached != null && typeof cached === "object" && (!userId || cached.userId !== userId);
 }
 
 /** Merges live rail data over the cached copy. Cached presence goes stale; cached birthdays only last a day. */
@@ -376,7 +389,7 @@ export function createChromeReader({ platform, identityHint = null } = {}) {
   };
 
   const persist = (liveRail, userId) => {
-    if (!storage || (!liveRail.me && liveRail.groups === undefined && liveRail.contacts === undefined)) return;
+    if (!storage || !userId || (!liveRail.me && liveRail.groups === undefined && liveRail.contacts === undefined)) return;
     clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
       const now = Date.now();
@@ -389,10 +402,19 @@ export function createChromeReader({ platform, identityHint = null } = {}) {
     }, 1000);
   };
 
+  const forget = () => {
+    cache = null;
+    clearTimeout(persistTimer);
+    health.count("shell.rail-cache-cleared");
+    storage?.set(RAIL_KEY, null).catch(() => health.count("shell.rail-cache-write-failed"));
+  };
+
   const compute = () => {
     const live = readLive();
     const hint = (identityHint && identityHint()) || {};
     const id = live.userId || hint.id || null;
+    // Signed out, or someone else signed in: the stored rail (names, groups, chat contacts) is deleted.
+    if (foreignCache(cache, id)) forget();
     const rail = mergeRail(live.rail, cache, Date.now(), id);
     const me = rail.me;
     snap = {

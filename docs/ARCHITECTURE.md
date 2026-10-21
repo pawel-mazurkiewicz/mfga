@@ -58,8 +58,16 @@ facebook.com tab
 ```
 
 The isolated world talks to the MAIN-world helper over `src/shared/bridge.js` (CustomEvent on `document`,
-JSON-string detail, random per-load channel id handed to MAIN world through a `data-mfga-channel`
-attribute on `<html>` set before the helper runs).
+JSON-string detail). The event names come from a random per-load channel id: both sides run before any page
+script, in either order; whichever runs first writes the id to `<html data-mfga-channel>`, the other reads it
+and removes the attribute at once, so page scripts never see it. The MAIN side captures `dispatchEvent`,
+`CustomEvent`, the `detail` getter and `JSON` at load. The helper is used only while
+`advanced.mainWorldHelper` is on; the userscript does not plant it at all when that switch (or MFGA) is off.
+
+Signed out (no `c_user`/`i_user` cookie: the login page, public pages after Log Out) MFGA only re-themes
+Facebook's page: no shell, no News Feed, and the rail cache (`mfga:rail`, which is bound to one account id)
+is deleted. The background learner stores only the variables' shape of a capture; post, group, actor,
+tracking, cursor and session values are blanked (`src/background/scrub.js`) and captures expire after 30 days.
 
 ---
 
@@ -197,7 +205,9 @@ gets the 2010 header + footer over Facebook's own (re-themed) page.
 ## 6. Settings
 
 Stored as one JSON object (`mfga:settings`) through the platform storage adapter (`chrome.storage.local`
-in the extension, `GM_getValue/GM_setValue` in the userscript, `localStorage` as last resort).
+in the extension, `GM_getValue/GM_setValue` (or async `GM.getValue/GM.setValue`) in the userscript, and as
+a last resort facebook.com's `localStorage`, where Facebook can read it: then only the settings are kept, without
+the keyword list, and the rail cache and op templates live in memory only).
 Schema and defaults: `src/shared/settings.js`. The settings dialog is a 2010 `pop_dialog`.
 
 ## 7. Diagnostics

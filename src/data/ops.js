@@ -183,7 +183,8 @@ export function createOpRegistry({ platform, harvest, now = () => Date.now() }) 
       .then((stored) => {
         const fresh = {};
         for (const [name, entry] of Object.entries(stored && typeof stored === "object" ? stored : {})) {
-          if (validEntry(entry) && now() - (entry.seenAt || 0) < CACHE_MAX_AGE_MS) fresh[name] = entry;
+          // "__proto__" would replace the cache object's prototype (page-writable storage in the userscript fallback).
+          if (name !== "__proto__" && validEntry(entry) && now() - (entry.seenAt || 0) < CACHE_MAX_AGE_MS) fresh[name] = entry;
         }
         return fresh;
       })

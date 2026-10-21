@@ -1,10 +1,12 @@
 // Extension content-script entry (isolated world). Builds the Platform object and boots MFGA.
 import { boot } from "../../src/main.js";
-import { createBridgeClient, BRIDGE_CHANNEL } from "../../src/shared/bridge.js";
+import { createBridgeClient, joinChannel } from "../../src/shared/bridge.js";
 
 const api = globalThis.browser ?? globalThis.chrome;
 const isFirefox = typeof globalThis.browser !== "undefined" && typeof globalThis.content !== "undefined";
-const bridge = createBridgeClient(BRIDGE_CHANNEL);
+// The MAIN-world helper (manifest world:"MAIN") and this script share a per-load channel id (bridge.js).
+const channel = joinChannel();
+const bridge = channel ? createBridgeClient(channel) : null;
 
 const platform = {
   kind: isFirefox ? "firefox" : "chrome",
@@ -34,11 +36,14 @@ const platform = {
       return {};
     }
   },
-  page: {
-    requireOp: (name, timeoutMs = 3000) => bridge.call("requireOp", { name, timeoutMs }, timeoutMs + 1000).catch(() => null),
-    navigate: (url) => bridge.call("navigate", { url }, 2000).then(Boolean, () => false),
-    readTokens: () => bridge.call("readTokens", {}, 3000).catch(() => ({ dtsg: null, lsd: null })),
-  },
+  // Used only while settings.advanced.mainWorldHelper is on (main.js).
+  page: bridge
+    ? {
+        requireOp: (name, timeoutMs = 3000) => bridge.call("requireOp", { name, timeoutMs }, timeoutMs + 1000).catch(() => null),
+        navigate: (url) => bridge.call("navigate", { url }, 2000).then(Boolean, () => false),
+        readTokens: () => bridge.call("readTokens", {}, 3000).catch(() => ({ dtsg: null, lsd: null })),
+      }
+    : null,
   addMenuCommand(_label, fn) {
     api.runtime.onMessage.addListener((msg) => {
       if (msg && msg.type === "mfga:openSettings") fn();

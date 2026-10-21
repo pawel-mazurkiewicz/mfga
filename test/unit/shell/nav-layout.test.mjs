@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveTarget } from "../../../src/fb/nav.js";
-import { syncObserved } from "../../../src/fb/layout.js";
+import { changedVars, syncObserved } from "../../../src/fb/layout.js";
 
 const www = new URL("https://www.facebook.com/?filter=all&sk=h_chr");
 const web = new URL("https://web.facebook.com/groups/feed/");
@@ -51,4 +51,14 @@ test("syncObserved observes new targets once and forgets detached ones", () => {
   // A target that is simply no longer wanted (no main column on plain pages) is dropped too.
   observed = syncObserved(ro, observed, [html, null]);
   assert.deepEqual([...ro.live], [html]);
+});
+
+test("changedVars ignores sub-pixel re-measurement noise, so an idle page is never restyled", () => {
+  // Measured on /groups/feed/: a fractional column offset re-measures 0.02px off after it is applied
+  // (LayoutUnit snapping); each rewrite of the :root variables cost a full-page style recalc every second.
+  const applied = { dx: 43.66, dy: 20, footer: 8931 };
+  assert.deepEqual(changedVars({ dx: 43.64, dy: 20, footer: 8931 }, applied), { geometry: false, footer: false });
+  assert.deepEqual(changedVars({ dx: 43.66, dy: 20.05, footer: 8931.04 }, applied), { geometry: false, footer: false });
+  assert.deepEqual(changedVars({ dx: 44.66, dy: 20, footer: 8931 }, applied), { geometry: true, footer: false });
+  assert.deepEqual(changedVars({ dx: 43.66, dy: 20, footer: 9500 }, applied), { geometry: false, footer: true }, "the footer alone moves when the page grows");
 });

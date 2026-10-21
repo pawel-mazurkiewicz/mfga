@@ -1174,7 +1174,7 @@ html[data-mfga-shell] [data-mfga-pass]{pointer-events:none!important}
 :where(html[data-mfga-shell] [data-mfga-pass]>:not([data-mfga-pass])){pointer-events:auto}
 ${onColumns("[data-mfga-pass]")}{background:transparent!important;overflow:visible!important}
 ${onColumns("[data-mfga-main]")}{box-sizing:border-box!important;min-width:0!important;margin-left:0!important;margin-right:0!important;position:relative!important;left:var(--mfga-main-dx,0px)!important;top:var(--mfga-main-dy,0px)!important}
-html[data-mfga-route="home"] [data-mfga-main]{width:${g.content.w}px!important;max-width:${g.content.w}px!important;flex:0 0 ${g.content.w}px!important}
+html[data-mfga-route="home"] [data-mfga-main]{width:${g.content.w}px!important;max-width:${g.content.w}px!important;flex:0 0 ${g.content.w}px!important;padding-left:0!important;padding-right:0!important;padding-top:0!important}
 html[data-mfga-route="groups-feed"] [data-mfga-main]{width:${g.wide.w}px!important;max-width:${g.wide.w}px!important;flex:0 0 ${g.wide.w}px!important}
 `;
   }
@@ -1223,11 +1223,11 @@ html[data-mfga-font="tahoma"] ${S2} .mfga-header-search-input{font-family:${FONT
 ${S2} .mfga-header-search-input::placeholder{color:#777;opacity:1}
 ${S2} .mfga-header-search-btn{display:flex;align-items:center;justify-content:center;width:20px;height:21px;padding:0;border:0;border-left:1px solid #F5F5F5;background:#fff;box-shadow:inset 0 1px #EDF2F5,inset 0 -1px #CFD8E7;cursor:pointer}
 ${S2} .mfga-header-links{position:absolute;top:0;right:0;display:flex;height:30px}
-${S2} .mfga-header-link{display:block;height:30px;padding:0 11px;border:0;background:none;color:#fff;font-weight:bold;line-height:29px;white-space:nowrap;cursor:pointer}
+${S2} .mfga-header-link{display:block;height:30px;padding:0 11px;border:0;background:none;color:#fff;font-weight:bold;line-height:30px;white-space:nowrap;cursor:pointer}
 ${S2} a.mfga-header-link:hover,${S2} button.mfga-header-link:hover{background:#4B67A1;text-decoration:none}
 ${S2} .mfga-header-arrow{display:inline-block;width:0;height:0;margin-left:5px;vertical-align:1px;border-top:4px solid #fff;border-left:4px solid transparent;border-right:4px solid transparent}
 ${S2} .mfga-header-account{position:relative}
-${S2} .mfga-open .mfga-header-account-btn,${S2} .mfga-open .mfga-header-account-btn:hover{position:relative;z-index:2;height:31px;background:#fff;color:#333;box-shadow:inset 1px 0 #333,inset -1px 0 #333,inset 0 1px #333}
+${S2} .mfga-open .mfga-header-account-btn,${S2} .mfga-open .mfga-header-account-btn:hover{position:relative;z-index:2;height:30px;padding-bottom:1px;background:#fff;color:#333;box-shadow:inset 1px 0 #333,inset -1px 0 #333,inset 0 1px #333}
 ${S2} .mfga-open .mfga-header-arrow{border-top-color:#333}
 ${S2} .mfga-header-menu{position:absolute;top:30px;right:0;z-index:1;min-width:200px;max-width:400px;padding:4px 0;border:1px solid #333;border-bottom-width:2px;background:#fff}
 ${S2} .mfga-header-menu-item{display:block;box-sizing:border-box;width:100%;height:20px;padding:0 22px;border:solid #fff;border-width:1px 0;background:#fff;color:#222;line-height:18px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
@@ -1255,11 +1255,11 @@ ${S2} .mfga-nav-icon{position:absolute;left:6px;top:3px;display:flex;align-items
 ${S2} .mfga-nav-pic{display:block;width:16px;height:16px;object-fit:cover}
 ${S2} .mfga-nav-count{color:#808080;font-weight:normal}
 ${S2} .mfga-nav-arrow{margin-left:6px;vertical-align:0}
-${S2} .mfga-nav-sep{width:172px;height:1px;margin:7px 0 13px 6px;background:#EEE}
-${S2} .mfga-nav-more{display:block;padding:4px 0 1px 6px;border:0;background:none;color:#3B5998;line-height:13px;cursor:pointer}
+${S2} .mfga-nav-sep{width:172px;height:1px;margin:7px 0 13px 6px;background:#F7F7F7}
+${S2} .mfga-nav-more{display:block;padding:5px 0 0 6px;border:0;background:none;color:#3B5998;line-height:13px;cursor:pointer}
 ${S2} .mfga-nav-more:hover{text-decoration:underline}
 ${S2} .mfga-nav-more-arrow{margin-left:4px;vertical-align:2px}
-${S2} .mfga-nav-title{padding:0 0 5px 6px;color:#808080;font-weight:bold;line-height:13px}
+${S2} .mfga-nav-title{margin-top:-3px;padding:0 0 5px 6px;color:#808080;font-weight:bold;line-height:13px}
 ${S2} .mfga-nav-go-online{display:inline-block;margin-left:6px;line-height:14px}
 `;
   }
@@ -1739,7 +1739,7 @@ ${S2} .mfga-chat-tab:hover{background:linear-gradient(#FFF,#E5E5E5)}
     if (DTSG_FRAMES.has(name)) {
       if (typeof config.token === "string" && config.token) t2.dtsg = config.token;
     } else if (name === "LSD") {
-      if (typeof config.token === "string" && config.token) t2.lsd = config.token;
+      if (typeof config.token === "string" && config.token && !t2.lsd) t2.lsd = config.token;
     } else if (name === "CurrentUserInitialData") {
       const id = String(config.USER_ID ?? "");
       if (/^\d+$/.test(id) && id !== "0") t2.userId = id;
@@ -2020,8 +2020,8 @@ ${S2} .mfga-chat-tab:hover{background:linear-gradient(#FFF,#E5E5E5)}
   var LOGIN_URL = /\/login\b/;
   var GqlError = class extends Error {
     /** kind: "auth"|"token"|"stale-doc"|"variables"|"field"|"rate"|"soft-block"|"checkpoint"|"network"|"server" */
-    constructor(message, { code = null, kind = "server" } = {}) {
-      super(message);
+    constructor(message2, { code = null, kind = "server" } = {}) {
+      super(message2);
       this.name = "GqlError";
       this.code = code;
       this.kind = kind;
@@ -2206,7 +2206,7 @@ ${S2} .mfga-chat-tab:hover{background:linear-gradient(#FFF,#E5E5E5)}
       inFlight = true;
       try {
         const text2 = await withTimeout(fetchText(body, headers), timeoutMs);
-        const result = parse(text2);
+        const result = parse2(text2);
         counts.ok++;
         strikes = 0;
         return result;
@@ -2240,7 +2240,7 @@ ${S2} .mfga-chat-tab:hover{background:linear-gradient(#FFF,#E5E5E5)}
       if (CHECKPOINT_URL.test(url)) halt("checkpoint-redirect");
       if (LOGIN_URL.test(url)) throw new GqlError("redirected to login", { kind: "auth" });
     }
-    function parse(text2) {
+    function parse2(text2) {
       if (CHECKPOINT_FLAG.test(text2)) halt("checkpoint-flag");
       const lines = codec.parseLines(text2);
       if (!lines.length) {
@@ -2441,7 +2441,7 @@ ${docId}`;
       cache ??= Promise.resolve().then(() => platform2.storage.get(OPS_STORAGE_KEY)).then((stored) => {
         const fresh = {};
         for (const [name, entry] of Object.entries(stored && typeof stored === "object" ? stored : {})) {
-          if (validEntry(entry) && now() - (entry.seenAt || 0) < CACHE_MAX_AGE_MS) fresh[name] = entry;
+          if (name !== "__proto__" && validEntry(entry) && now() - (entry.seenAt || 0) < CACHE_MAX_AGE_MS) fresh[name] = entry;
         }
         return fresh;
       }).catch(() => ({}));
@@ -3405,6 +3405,25 @@ ${docId}`;
       attribution: `CometHomeRoot.react,comet.home,via_cold_start,${startTime},${navId},${HOME_BOOKMARK_ID},,`
     };
   }
+  function sessionFields(ids) {
+    return {
+      session_id: ids.sessionId,
+      downstream_share_session_id: ids.shareSessionId,
+      downstream_share_session_start_time: ids.startTime,
+      attribution_id_v2: ids.attribution
+    };
+  }
+  function freshTrackingEntry(entry, ids) {
+    let o;
+    try {
+      o = JSON.parse(entry);
+    } catch {
+      return null;
+    }
+    if (!isObject2(o)) return null;
+    if (ids && "conversation_guide_session_id" in o) o.conversation_guide_session_id = ids.assistantSessionId;
+    return JSON.stringify(o);
+  }
   function reactTemplate(ids) {
     return {
       input: {
@@ -3470,6 +3489,7 @@ ${docId}`;
     const v = structuredClone(template);
     const input = isObject2(v.input) ? v.input : v.input = {};
     Object.assign(input, { feedback_id: p.feedbackId, feedback_reaction_id: p.reactionId, client_mutation_id: p.mutationId });
+    if (p.ids) assignPresent(input, sessionFields(p.ids));
     assignPresent(input, {
       actor_id: p.userId,
       tracking: p.tracking ? [p.tracking] : [],
@@ -3488,14 +3508,29 @@ ${docId}`;
       message: { ranges: [], text: p.text },
       idempotence_token: p.idempotenceToken
     });
-    const plain = (Array.isArray(input.tracking) ? input.tracking : []).filter((s) => typeof s === "string" && s.startsWith("{"));
+    if (p.ids) assignPresent(input, sessionFields(p.ids));
+    const plain = (Array.isArray(input.tracking) ? input.tracking : []).filter((s) => typeof s === "string" && s.startsWith("{")).map((s) => freshTrackingEntry(s, p.ids)).filter(Boolean);
     assignPresent(input, { tracking: p.tracking ? [p.tracking, ...plain] : [], downstream_share_session_origin_uri: p.originUri });
     assignPresent(input, { attachments: null, formatting_style: null, vod_video_timestamp: null, reply_comment_parent_fbid: null });
     assignPresent(v, { focusCommentID: null });
     return v;
   }
+  var COMMENTS_FALLBACK = Object.freeze({
+    commentsAfterCount: -1,
+    commentsAfterCursor: null,
+    commentsBeforeCount: null,
+    commentsBeforeCursor: null,
+    commentsIntentToken: null,
+    feedLocation: "POST_PERMALINK_DIALOG",
+    focusCommentID: null,
+    id: null,
+    scale: 1,
+    useDefaultActor: false,
+    __relay_internal__pv__CometUFICommentAvatarStickerAnimatedImagerelayprovider: false,
+    __relay_internal__pv__IsWorkUserrelayprovider: false
+  });
   function commentsVariables(template, { feedbackId, cursor }) {
-    const base = isObject2(template) ? structuredClone(template) : { commentsAfterCount: -1, commentsAfterCursor: null, feedLocation: "POST_PERMALINK_DIALOG", id: null };
+    const base = isObject2(template) ? structuredClone(template) : { ...COMMENTS_FALLBACK };
     return { ...base, id: feedbackId, commentsAfterCursor: cursor ?? null };
   }
   function referrerOf(url) {
@@ -3536,7 +3571,8 @@ ${docId}`;
               mutationId: nextMutationId(),
               tracking: story.tracking,
               referrer: story.url ? referrerOf(story.url) : "/",
-              originUri: story.url || "https://www.facebook.com/"
+              originUri: story.url || "https://www.facebook.com/",
+              ids
             })
           );
           if (!res) return { ok: false, error: "unavailable" };
@@ -3552,9 +3588,9 @@ ${docId}`;
       },
       async comment(story, text2) {
         const feedbackId = story?.feedback?.id;
-        const message = String(text2 ?? "").trim();
+        const message2 = String(text2 ?? "").trim();
         if (!feedbackId) return { ok: false, error: "no-feedback" };
-        if (!message) return { ok: false, error: "empty" };
+        if (!message2) return { ok: false, error: "empty" };
         if (story.feedback.canComment === false) return { ok: false, error: "disabled" };
         try {
           const res = await runOp(
@@ -3563,11 +3599,12 @@ ${docId}`;
             (op) => commentVariables(op.variables?.input ? op.variables : commentTemplate(ids), {
               feedbackId,
               groupId: story.groupId ?? null,
-              text: message,
+              text: message2,
               mutationId: nextMutationId(),
               idempotenceToken: `client:${uuid2()}`,
               tracking: story.tracking,
-              originUri: story.url || "https://www.facebook.com/"
+              originUri: story.url || "https://www.facebook.com/",
+              ids
             })
           );
           if (!res) return { ok: false, error: "unavailable" };
@@ -3576,7 +3613,7 @@ ${docId}`;
           health.count("actions.comment");
           const node = created.feedback_comment_edge?.node;
           const echoed = node ? extractComment2(node) : null;
-          return { ok: true, comment: echoed?.text ? echoed : ownComment(node?.id ?? null, message) };
+          return { ok: true, comment: echoed?.text ? echoed : ownComment(node?.id ?? null, message2) };
         } catch (err) {
           return failure("comment", err);
         }
@@ -3670,6 +3707,7 @@ ${docId}`;
   var VARS_ID = "mfga-layout-vars";
   var ENSURE_MS = 1e3;
   var PUSH_VIEW_MIN_WIDTH = 450;
+  var VARS_EPSILON_PX = 0.1;
   var hasColumns = (mode) => mode === "home" || mode === "groups-feed";
   function readSettings(settings) {
     return (typeof settings?.get === "function" ? settings.get() : settings) || DEFAULTS;
@@ -3702,7 +3740,7 @@ ${docId}`;
     return host;
   }
   function findMain(doc = document) {
-    return [...doc.querySelectorAll('[role="main"]')].find((m) => !m.closest('[role="dialog"]')) || null;
+    return doc.querySelector('[role="main"]:not([role="dialog"] *)');
   }
   function pushViewOpen(doc = document) {
     const root = mountRoot(doc);
@@ -3715,7 +3753,7 @@ ${docId}`;
     });
   }
   function findBanner(doc = document) {
-    return [...doc.querySelectorAll('[role="banner"]')].find((b) => !b.closest(`[role="dialog"], #${HOST_ID}`)) || null;
+    return doc.querySelector(`[role="banner"]:not([role="dialog"] *, #${HOST_ID} *)`);
   }
   function passThroughMarks(anchor, doc = document) {
     const chain = [];
@@ -3739,6 +3777,12 @@ ${docId}`;
     for (const el of next) if (!observed.has(el)) ro.observe(el);
     return next;
   }
+  function changedVars(next, applied, eps = VARS_EPSILON_PX) {
+    return {
+      geometry: Math.abs(next.dx - applied.dx) >= eps || Math.abs(next.dy - applied.dy) >= eps,
+      footer: Math.abs(next.footer - applied.footer) >= eps
+    };
+  }
   function createLayout({ settings } = {}) {
     const doc = document;
     const html = doc.documentElement;
@@ -3751,15 +3795,24 @@ ${docId}`;
     let ro = null;
     let observed = /* @__PURE__ */ new Set();
     let timer = 0;
+    let footerHost = null;
     const writeVars = (next) => {
-      if (next.dx === vars.dx && next.dy === vars.dy && next.footer === vars.footer && varsEl?.isConnected) return;
-      vars = next;
-      if (!varsEl?.isConnected) {
-        varsEl = doc.getElementById(VARS_ID) || doc.createElement("style");
-        varsEl.id = VARS_ID;
-        (doc.head || html).appendChild(varsEl);
+      const changed = changedVars(next, vars);
+      if (changed.geometry || !varsEl?.isConnected) {
+        vars = { ...vars, dx: next.dx, dy: next.dy };
+        if (!varsEl?.isConnected) {
+          varsEl = doc.getElementById(VARS_ID) || doc.createElement("style");
+          varsEl.id = VARS_ID;
+          (doc.head || html).appendChild(varsEl);
+        }
+        varsEl.textContent = `:root{--mfga-main-dx:${next.dx}px;--mfga-main-dy:${next.dy}px}`;
       }
-      varsEl.textContent = `:root{--mfga-main-dx:${next.dx}px;--mfga-main-dy:${next.dy}px;--mfga-footer-top:${next.footer}px}`;
+      const host = doc.getElementById(HOST_ID);
+      if (changed.footer || host && host !== footerHost) {
+        vars = { ...vars, footer: next.footer };
+        footerHost = host;
+        host?.style.setProperty("--mfga-footer-top", `${next.footer}px`);
+      }
     };
     const setMarks = (next) => {
       for (const [el, attr] of marked) if (next.get(el) !== attr) el.removeAttribute(attr);
@@ -3965,15 +4018,16 @@ ${docId}`;
     return null;
   }
   function countsFromLabels(labels) {
+    const named = labels.map((label) => String(label ?? "")).filter((label) => label.trim());
+    const kinds = named.map(jewelKind);
     const out = { notifications: null, messages: null };
-    for (const label of labels) {
-      const kind = jewelKind(label);
+    named.forEach((label, i) => {
+      const kind = kinds[i];
       if ((kind === "notifications" || kind === "messages") && out[kind] == null) out[kind] = parseCount(label);
-    }
-    if (out.notifications == null && out.messages == null && labels.length >= 3) {
-      out.notifications = parseCount(labels[labels.length - 2]);
-      if (labels.length >= 4) out.messages = parseCount(labels[labels.length - 3]);
-    }
+    });
+    const at = (i) => kinds[i] == null ? parseCount(named[i]) : null;
+    if (out.notifications == null && named.length >= 3) out.notifications = at(named.length - 2);
+    if (out.messages == null && named.length >= 4) out.messages = at(named.length - 3);
     return out;
   }
   var APOS = "['’]";
@@ -4106,8 +4160,11 @@ ${docId}`;
     return out;
   }
   function usableCache(cached, userId) {
-    if (!cached || cached.v !== RAIL_VERSION) return null;
-    return !userId || cached.userId === userId ? cached : null;
+    if (!cached || cached.v !== RAIL_VERSION || !userId) return null;
+    return cached.userId === userId ? cached : null;
+  }
+  function foreignCache(cached, userId) {
+    return cached != null && typeof cached === "object" && (!userId || cached.userId !== userId);
   }
   function mergeRail(live, cached, now = Date.now(), userId = null) {
     const c = usableCache(cached, userId);
@@ -4256,7 +4313,7 @@ ${docId}`;
       };
     };
     const persist = (liveRail, userId) => {
-      if (!storage || !liveRail.me && liveRail.groups === void 0 && liveRail.contacts === void 0) return;
+      if (!storage || !userId || !liveRail.me && liveRail.groups === void 0 && liveRail.contacts === void 0) return;
       clearTimeout(persistTimer);
       persistTimer = setTimeout(() => {
         const now = Date.now();
@@ -4267,10 +4324,17 @@ ${docId}`;
         storage.set(RAIL_KEY, next).catch(() => health.count("shell.rail-cache-write-failed"));
       }, 1e3);
     };
+    const forget = () => {
+      cache = null;
+      clearTimeout(persistTimer);
+      health.count("shell.rail-cache-cleared");
+      storage?.set(RAIL_KEY, null).catch(() => health.count("shell.rail-cache-write-failed"));
+    };
     const compute = () => {
       const live = readLive();
       const hint = identityHint && identityHint() || {};
       const id = live.userId || hint.id || null;
+      if (foreignCache(cache, id)) forget();
       const rail = mergeRail(live.rail, cache, Date.now(), id);
       const me2 = rail.me;
       snap = {
@@ -5046,7 +5110,7 @@ ${docId}`;
     return [...root.querySelectorAll('[data-ad-rendering-role="profile_name"]')].find((n) => !n.querySelector("h5") && notInComment(n)) ?? null;
   }
   function findMessage(root) {
-    const embedded = root.querySelector("h5");
+    const embedded = [...root.querySelectorAll("h5")].find((h2) => !h2.closest('[data-ad-rendering-role="story_message"]'));
     const msg = root.querySelector('[data-ad-rendering-role="story_message"]');
     return msg && (!embedded || before(msg, embedded)) && notInComment(msg) ? msg : null;
   }
@@ -5082,16 +5146,24 @@ ${docId}`;
     const box2 = top.length > 1 ? commonAncestor(top[0], top[top.length - 1]) : top[0].parentElement;
     return box2 && !avoid.some((a) => box2.contains(a)) ? box2 : climbUntil(top[0], avoid, root);
   }
-  function findAttachments(root, name, message, footer) {
+  function findAttachments(root, name, message2, footer) {
     if (!name || !footer) return [];
     const lca = commonAncestor(name, footer);
     if (!lca || lca === name) return [];
     const head = childOf(lca, name);
     const foot = childOf(lca, footer);
     const out = [];
+    const section4 = (c) => c.getAttribute("aria-hidden") !== "true" && c.firstElementChild != null;
     for (let c = head?.nextElementSibling; c && c !== foot; c = c.nextElementSibling) {
-      if (c.getAttribute("aria-hidden") === "true" || message && c.contains(message) || !c.firstElementChild) continue;
-      out.push(c);
+      if (message2 && c.contains(message2)) out.push(...afterMessage(message2, c).filter(section4));
+      else if (section4(c)) out.push(c);
+    }
+    return out;
+  }
+  function afterMessage(message2, box2) {
+    const out = [];
+    for (let el = message2; el && el !== box2; el = el.parentElement) {
+      for (let s = el.nextElementSibling; s; s = s.nextElementSibling) out.push(s);
     }
     return out;
   }
@@ -5099,11 +5171,11 @@ ${docId}`;
     const parts = [];
     const add = (el, part) => el && parts.push([el, part]);
     const name = findName(root);
-    const message = findMessage(root);
+    const message2 = findMessage(root);
     const buttons = findActionButtons(root);
     const buttonEls = buttons.map((b) => b.button);
     const actions = buttonEls.length > 1 ? commonAncestor(buttonEls[0], buttonEls[buttonEls.length - 1]) : buttonEls[0]?.parentElement;
-    const head = [name, message].filter(Boolean);
+    const head = [name, message2].filter(Boolean);
     const toolbar = [...root.querySelectorAll('span[role="toolbar"]')].find(notInComment);
     const summary = toolbar ? climbUntil(toolbar, [...head, ...buttonEls], root) : null;
     const form = [...root.querySelectorAll("form")].find((f) => f.querySelector('[role="textbox"], [contenteditable="true"]'));
@@ -5113,8 +5185,8 @@ ${docId}`;
     add(findAvatar(root, name), "avatar");
     add(name, "name");
     add(findByline(root, name), "byline");
-    add(message, "message");
-    for (const a of findAttachments(root, name, message, actions ?? summary)) add(a, "attachment");
+    add(message2, "message");
+    for (const a of findAttachments(root, name, message2, actions ?? summary)) add(a, "attachment");
     if (summary && summary.nextElementSibling === actions) add(summary.parentElement, "footer");
     add(actions, "actions");
     add(summary, "summary");
@@ -7050,13 +7122,13 @@ ${docId}`;
         );
       },
       /** <select>; `parse` turns the option string back into the setting's type. */
-      select(path, options, { labelledBy, parse = (v) => v } = {}) {
+      select(path, options, { labelledBy, parse: parse2 = (v) => v } = {}) {
         const select = h(
           "select.mfga-input",
           { dataset: { mfgaSetting: path }, "aria-labelledby": labelledBy },
           options.map((o) => h("option", { value: String(o.value) }, o.label))
         );
-        select.addEventListener("change", () => apply(patchFor(path, parse(select.value))));
+        select.addEventListener("change", () => apply(patchFor(path, parse2(select.value))));
         onSync((s) => {
           const v = String(read(s, path));
           if (![...select.options].some((o) => o.value === v)) select.append(h("option", { value: v }, v));
@@ -7880,6 +7952,7 @@ ${docId}`;
   var FEED_SOURCES2 = ["friends", "groups", "pages", "favorites"];
   var REQUEST_GAP_MS = 1e3;
   var LAST_SEEN_KEY = "mfga:lastSeen";
+  var SIGNED_IN_COOKIE = /(?:^|;\s*)(?:c_user|i_user)=\d+/;
   var COMPOSER_SELECTORS = ['[role="region"][aria-label="Create a post"] [role="button"]', '[role="region"][aria-label="Utwórz post"] [role="button"]'];
   registerStrings({
     en: {
@@ -7925,6 +7998,16 @@ ${docId}`;
     style.textContent = s.enabled ? buildCss(s) : "";
     if (!style.isConnected) (document.head || document.documentElement).appendChild(style);
   }
+  function withoutShell(settings) {
+    return {
+      get() {
+        const s = settings.get();
+        return { ...s, look: { ...s.look, shell: false } };
+      },
+      subscribe: (fn) => settings.subscribe(fn)
+    };
+  }
+  var pageToken = (v) => typeof v === "string" && /^[\x21-\x7e]{1,255}$/.test(v) ? v : null;
   function removalStats(feed, cleaner) {
     const fromFeed = hiddenCounts(feed?.stats?.() ?? {});
     const reasons = cleaner?.stats?.()?.reasons ?? {};
@@ -7960,6 +8043,7 @@ ${docId}`;
       })
     );
     const lastSeen = Number(await platform2.storage.get(LAST_SEEN_KEY).catch(() => 0)) || 0;
+    await new Promise((resolve) => onRoot(resolve));
     health.fact("platform", { kind: platform2.kind, version: platform2.version, ...platform2.diagnostics || {} });
     const app = createApp({ platform: platform2, settings, harvest, style, lastSeen });
     platform2.addMenuCommand(t("main.menu"), () => app.openSettings());
@@ -7977,6 +8061,10 @@ ${docId}`;
     const S3 = () => settings.get();
     let route = classifyRoute();
     let started = false;
+    const signedOut = !SIGNED_IN_COOKIE.test(document.cookie || "") && !harvest?.tokens?.userId;
+    const pagePlatform = Object.create(platform2, {
+      page: { get: () => S3().advanced.mainWorldHelper ? platform2.page : null }
+    });
     const client = harvest ? createGqlClient({
       platform: platform2,
       harvest,
@@ -7990,20 +8078,22 @@ ${docId}`;
       },
       refreshTokens: async () => {
         harvest.refresh?.();
-        const fresh = await platform2.page?.readTokens?.().catch(() => null);
-        if (fresh?.dtsg) harvest.tokens.dtsg = fresh.dtsg;
-        if (fresh?.lsd) harvest.tokens.lsd = fresh.lsd;
+        const fresh = await pagePlatform.page?.readTokens?.().catch(() => null);
+        const dtsg = pageToken(fresh?.dtsg);
+        const lsd = pageToken(fresh?.lsd);
+        if (dtsg) harvest.tokens.dtsg = dtsg;
+        if (lsd) harvest.tokens.lsd = lsd;
       }
     }) : null;
-    const ops = harvest ? createOpRegistry({ platform: platform2, harvest }) : null;
+    const ops = harvest ? createOpRegistry({ platform: pagePlatform, harvest }) : null;
     const actions = client ? createActions({ client, ops, harvest }) : null;
     let classifier = createClassifier({ hideAI: S3().feed.hideAI });
-    const navigator2 = createNavigator({ platform: platform2 });
+    const navigator2 = createNavigator({ platform: pagePlatform });
     const reader = createChromeReader({
       platform: platform2,
       identityHint: () => harvest?.tokens?.userId ? { id: harvest.tokens.userId, name: harvest.tokens.name || null } : null
     });
-    const layout = createLayout({ settings });
+    const layout = createLayout({ settings: signedOut ? withoutShell(settings) : settings });
     let shell = null;
     let cleaner = null;
     let skin = null;
@@ -8117,7 +8207,7 @@ ${docId}`;
     }
     async function canUseOurFeed() {
       if (!client || !ops || client.halted) return false;
-      if (!S3().look.shell) return false;
+      if (!S3().look.shell || signedOut || !harvest.tokens.userId) return false;
       const op = await ops.get(FEED_QUERY).catch(() => null);
       return !!op?.variables;
     }
@@ -8183,7 +8273,7 @@ ${docId}`;
       paint(style, S3());
       const s = S3();
       layout.apply(route);
-      if (s.look.shell) {
+      if (s.look.shell && !signedOut) {
         shell = safe(
           "shell",
           () => createShell({
@@ -8232,14 +8322,40 @@ ${docId}`;
 
   // src/shared/bridge.js
   var PREFIX2 = "mfga:";
-  var BRIDGE_CHANNEL = "v1";
-  function createBridgeClient(channel, { timeoutMs = 4e3 } = {}) {
+  var CHANNEL_ATTR = "data-mfga-channel";
+  var CHANNEL_ID = /^[0-9a-f]{32}$/;
+  var dispatch = EventTarget.prototype.dispatchEvent;
+  var Custom = CustomEvent;
+  var detailOf = Object.getOwnPropertyDescriptor(CustomEvent.prototype, "detail")?.get ?? function detail() {
+    return this.detail;
+  };
+  var { parse, stringify } = JSON;
+  function randomId() {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    let id = "";
+    for (const b of bytes) id += (b < 16 ? "0" : "") + b.toString(16);
+    return id;
+  }
+  function joinChannel(doc = document) {
+    const html = doc.documentElement;
+    if (!html) return null;
+    const given = html.getAttribute(CHANNEL_ATTR);
+    if (given && CHANNEL_ID.test(given)) {
+      html.removeAttribute(CHANNEL_ATTR);
+      return given;
+    }
+    const id = randomId();
+    html.setAttribute(CHANNEL_ATTR, id);
+    return id;
+  }
+  var message = (type, detail2) => new Custom(type, { __proto__: null, detail: detail2 });
+  function createBridgeClient(channel2, { timeoutMs = 4e3 } = {}) {
     let seq3 = 0;
     const pending = /* @__PURE__ */ new Map();
-    document.addEventListener(`${PREFIX2}${channel}:res`, (ev) => {
+    document.addEventListener(`${PREFIX2}${channel2}:res`, (ev) => {
       let msg;
       try {
-        msg = JSON.parse(ev.detail);
+        msg = parse(detailOf.call(ev));
       } catch {
         return;
       }
@@ -8259,7 +8375,7 @@ ${docId}`;
             reject(new Error(`bridge timeout: ${method}`));
           }, ms);
           pending.set(id, { resolve, reject, timer });
-          document.dispatchEvent(new CustomEvent(`${PREFIX2}${channel}:req`, { detail: JSON.stringify({ id, method, params }) }));
+          dispatch.call(document, message(`${PREFIX2}${channel2}:req`, stringify({ id, method, params })));
         });
       }
     };
@@ -8268,7 +8384,8 @@ ${docId}`;
   // platform/extension/content.js
   var api = globalThis.browser ?? globalThis.chrome;
   var isFirefox = typeof globalThis.browser !== "undefined" && typeof globalThis.content !== "undefined";
-  var bridge = createBridgeClient(BRIDGE_CHANNEL);
+  var channel = joinChannel();
+  var bridge = channel ? createBridgeClient(channel) : null;
   var platform = {
     kind: isFirefox ? "firefox" : "chrome",
     version: api.runtime.getManifest().version,
@@ -8297,11 +8414,12 @@ ${docId}`;
         return {};
       }
     },
-    page: {
+    // Used only while settings.advanced.mainWorldHelper is on (main.js).
+    page: bridge ? {
       requireOp: (name, timeoutMs = 3e3) => bridge.call("requireOp", { name, timeoutMs }, timeoutMs + 1e3).catch(() => null),
       navigate: (url) => bridge.call("navigate", { url }, 2e3).then(Boolean, () => false),
       readTokens: () => bridge.call("readTokens", {}, 3e3).catch(() => ({ dtsg: null, lsd: null }))
-    },
+    } : null,
     addMenuCommand(_label, fn) {
       api.runtime.onMessage.addListener((msg) => {
         if (msg && msg.type === "mfga:openSettings") fn();

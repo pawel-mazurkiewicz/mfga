@@ -87,14 +87,20 @@
     return key;
   }
 
+  let renders = 0;
+  /** Re-renders the root for the current URL; a navigation that started later wins over a slower earlier one. */
   async function render() {
+    const id = ++renders;
     const res = await fetch(location.pathname + location.search, { credentials: "include" });
-    const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+    const html = await res.text();
+    if (id !== renders) return;
+    const doc = new DOMParser().parseFromString(html, "text/html");
     const fresh = doc.querySelector('div[id^="mount_0_0"]');
     if (!fresh) return;
     root().replaceChildren(...[...fresh.childNodes].map((n) => document.importNode(n, true)));
     document.title = doc.title;
     for (const s of doc.querySelectorAll('script[type="application/json"][data-sjs]')) document.body.appendChild(document.importNode(s, true));
+    for (const t of document.querySelectorAll("body > template[data-portal]")) t.remove();
     for (const t of doc.querySelectorAll("body > template")) document.body.appendChild(document.importNode(t, true));
     require("ServerJSPayloadListener").process();
     window.scrollTo(0, 0);

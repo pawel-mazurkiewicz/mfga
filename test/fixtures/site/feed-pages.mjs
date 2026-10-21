@@ -34,10 +34,11 @@ export function feedPage(world, feedName, { offset = 0, size = 4, ctx }) {
   const edges = organic.map((story, i) => organicEdge(world, story, ctx, encodeCursor(feedName, offset + i + 1), { engagement: feedName === "top" && world.engagement.has(story.postId) }));
   const items = organic.map((story) => ({ story }));
   const plan = junkPlan(world, feedName, Math.floor(offset / Math.max(1, size)), organic.length);
-  for (const item of plan) {
-    edges.splice(item.position, 0, junkEdge(world, item, ctx, encodeCursor(feedName, offset + Math.min(item.position, organic.length))));
+  plan.forEach((item, k) => {
+    // Positions grow with k, so k junk edges precede this one: its cursor resumes after the organic ones before it.
+    edges.splice(item.position, 0, junkEdge(world, item, ctx, encodeCursor(feedName, offset + item.position - k)));
     items.splice(item.position, 0, item);
-  }
+  });
   const next = offset + organic.length;
   return {
     edges,

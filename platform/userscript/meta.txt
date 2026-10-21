@@ -24,4 +24,6 @@
 // @grant        GM_addValueChangeListener
 // @grant        GM_registerMenuCommand
 // @grant        GM_addElement
+// @grant        GM.getValue
+// @grant        GM.setValue
 // ==/UserScript==

@@ -5,9 +5,10 @@
 // In content/sandbox modes (Violentmonkey content mode, Firefox Xray sandboxes) the small MAIN-world
 // helper is planted with GM_addElement, which executes even under facebook.com's nonce CSP, and is
 // reached over the same CustomEvent bridge the extension uses.
-/* global unsafeWindow, GM_info, GM_getValue, GM_setValue, GM_addValueChangeListener, GM_registerMenuCommand, GM_addElement, __MFGA_MAIN_WORLD__, __MFGA_VERSION__ */
+/* global unsafeWindow, GM, GM_info, GM_getValue, GM_setValue, GM_addValueChangeListener, GM_registerMenuCommand, GM_addElement, __MFGA_MAIN_WORLD__, __MFGA_VERSION__ */
 import { boot } from "../../src/main.js";
-import { createBridgeClient, BRIDGE_CHANNEL } from "../../src/shared/bridge.js";
+import { createBridgeClient, dropChannel, joinChannel } from "../../src/shared/bridge.js";
+import { sanitize, STORAGE_KEY as SETTINGS_KEY } from "../../src/shared/settings.js";
 import { navigate, readTokens, requireOp } from "../../src/page/page-api.js";
 
 const W = (typeof unsafeWindow !== "undefined" && unsafeWindow) || window;
@@ -31,9 +32,38 @@ function storageAdapter() {
       },
     };
   }
-  // Last resort (e.g. managers that only grant the async GM.* API in page mode): per-origin storage.
+  // Managers with only the async GM.* API (Greasemonkey 4, FireMonkey, ...). Values go in as JSON text, the one
+  // type every such manager stores.
+  const gm = typeof GM !== "undefined" ? GM : null;
+  if (gm && typeof gm.getValue === "function" && typeof gm.setValue === "function") {
+    return {
+      get: async (key) => {
+        const raw = await gm.getValue(key);
+        try {
+          return typeof raw === "string" ? JSON.parse(raw) : raw;
+        } catch {
+          return undefined;
+        }
+      },
+      set: async (key, value) => gm.setValue(key, JSON.stringify(value)),
+      onChange() {},
+    };
+  }
+  return pageStorage();
+}
+
+/**
+ * Last resort: facebook.com's own localStorage, which Facebook's scripts can read and write. Only the settings
+ * go there, without the private keyword list; the rail cache (names, chat contacts), the op templates and the
+ * keywords stay in memory for this page.
+ */
+function pageStorage() {
+  const memory = new Map();
+  const PERSISTED = new Set([SETTINGS_KEY]);
   return {
     get: async (key) => {
+      if (memory.has(key)) return structuredClone(memory.get(key));
+      if (!PERSISTED.has(key)) return undefined;
       try {
         const raw = localStorage.getItem(key);
         return raw == null ? undefined : JSON.parse(raw);
@@ -42,14 +72,27 @@ function storageAdapter() {
       }
     },
     set: async (key, value) => {
+      memory.set(key, structuredClone(value));
+      if (!PERSISTED.has(key)) return;
       try {
-        localStorage.setItem(key, JSON.stringify(value));
+        const s = sanitize(value);
+        localStorage.setItem(key, JSON.stringify({ ...s, feed: { ...s.feed, keywords: [] } }));
       } catch {
         /* storage full or blocked: settings stay in memory for this page */
       }
     },
     onChange() {},
   };
+}
+
+/** Whether the MAIN-world helper may be planted: MFGA on and settings.advanced.mainWorldHelper on. */
+function helperAllowed() {
+  try {
+    const s = sanitize(typeof GM_getValue === "function" ? GM_getValue(SETTINGS_KEY) : undefined);
+    return s.enabled && s.advanced.mainWorldHelper;
+  } catch {
+    return true;
+  }
 }
 
 function pageApi() {
@@ -60,13 +103,20 @@ function pageApi() {
       readTokens: () => readTokens(W),
     };
   }
-  if (typeof GM_addElement !== "function") return null;
+  if (typeof GM_addElement !== "function" || !helperAllowed()) return null;
+  // The helper takes this per-load channel id off <html> as it starts (bridge.js).
+  const channel = joinChannel();
+  if (!channel) return null;
   try {
-    GM_addElement("script", { textContent: __MFGA_MAIN_WORLD__ });
+    // An inline script runs as it is inserted: removing it at once leaves no MFGA script text in the page.
+    GM_addElement("script", { textContent: __MFGA_MAIN_WORLD__ })?.remove?.();
   } catch {
+    dropChannel(channel);
     return null;
   }
-  const bridge = createBridgeClient(BRIDGE_CHANNEL);
+  // Still on <html>: the helper did not run (blocked), and nobody else may learn the id.
+  if (dropChannel(channel)) return null;
+  const bridge = createBridgeClient(channel);
   return {
     requireOp: (name, timeoutMs = 3000) => bridge.call("requireOp", { name, timeoutMs }, timeoutMs + 1000).catch(() => null),
     navigate: (url) => bridge.call("navigate", { url }, 2000).then(Boolean, () => false),

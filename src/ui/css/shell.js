@@ -22,7 +22,7 @@ html[data-mfga-shell] [data-mfga-pass]{pointer-events:none!important}
 :where(html[data-mfga-shell] [data-mfga-pass]>:not([data-mfga-pass])){pointer-events:auto}
 ${onColumns("[data-mfga-pass]")}{background:transparent!important;overflow:visible!important}
 ${onColumns("[data-mfga-main]")}{box-sizing:border-box!important;min-width:0!important;margin-left:0!important;margin-right:0!important;position:relative!important;left:var(--mfga-main-dx,0px)!important;top:var(--mfga-main-dy,0px)!important}
-html[data-mfga-route="home"] [data-mfga-main]{width:${g.content.w}px!important;max-width:${g.content.w}px!important;flex:0 0 ${g.content.w}px!important}
+html[data-mfga-route="home"] [data-mfga-main]{width:${g.content.w}px!important;max-width:${g.content.w}px!important;flex:0 0 ${g.content.w}px!important;padding-left:0!important;padding-right:0!important;padding-top:0!important}
 html[data-mfga-route="groups-feed"] [data-mfga-main]{width:${g.wide.w}px!important;max-width:${g.wide.w}px!important;flex:0 0 ${g.wide.w}px!important}
 `;
 }
@@ -73,11 +73,11 @@ html[data-mfga-font="tahoma"] ${S} .mfga-header-search-input{font-family:${FONT_
 ${S} .mfga-header-search-input::placeholder{color:#777;opacity:1}
 ${S} .mfga-header-search-btn{display:flex;align-items:center;justify-content:center;width:20px;height:21px;padding:0;border:0;border-left:1px solid #F5F5F5;background:#fff;box-shadow:inset 0 1px #EDF2F5,inset 0 -1px #CFD8E7;cursor:pointer}
 ${S} .mfga-header-links{position:absolute;top:0;right:0;display:flex;height:30px}
-${S} .mfga-header-link{display:block;height:30px;padding:0 11px;border:0;background:none;color:#fff;font-weight:bold;line-height:29px;white-space:nowrap;cursor:pointer}
+${S} .mfga-header-link{display:block;height:30px;padding:0 11px;border:0;background:none;color:#fff;font-weight:bold;line-height:30px;white-space:nowrap;cursor:pointer}
 ${S} a.mfga-header-link:hover,${S} button.mfga-header-link:hover{background:#4B67A1;text-decoration:none}
 ${S} .mfga-header-arrow{display:inline-block;width:0;height:0;margin-left:5px;vertical-align:1px;border-top:4px solid #fff;border-left:4px solid transparent;border-right:4px solid transparent}
 ${S} .mfga-header-account{position:relative}
-${S} .mfga-open .mfga-header-account-btn,${S} .mfga-open .mfga-header-account-btn:hover{position:relative;z-index:2;height:31px;background:#fff;color:#333;box-shadow:inset 1px 0 #333,inset -1px 0 #333,inset 0 1px #333}
+${S} .mfga-open .mfga-header-account-btn,${S} .mfga-open .mfga-header-account-btn:hover{position:relative;z-index:2;height:30px;padding-bottom:1px;background:#fff;color:#333;box-shadow:inset 1px 0 #333,inset -1px 0 #333,inset 0 1px #333}
 ${S} .mfga-open .mfga-header-arrow{border-top-color:#333}
 ${S} .mfga-header-menu{position:absolute;top:30px;right:0;z-index:1;min-width:200px;max-width:400px;padding:4px 0;border:1px solid #333;border-bottom-width:2px;background:#fff}
 ${S} .mfga-header-menu-item{display:block;box-sizing:border-box;width:100%;height:20px;padding:0 22px;border:solid #fff;border-width:1px 0;background:#fff;color:#222;line-height:18px;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
@@ -106,11 +106,11 @@ ${S} .mfga-nav-icon{position:absolute;left:6px;top:3px;display:flex;align-items:
 ${S} .mfga-nav-pic{display:block;width:16px;height:16px;object-fit:cover}
 ${S} .mfga-nav-count{color:#808080;font-weight:normal}
 ${S} .mfga-nav-arrow{margin-left:6px;vertical-align:0}
-${S} .mfga-nav-sep{width:172px;height:1px;margin:7px 0 13px 6px;background:#EEE}
-${S} .mfga-nav-more{display:block;padding:4px 0 1px 6px;border:0;background:none;color:#3B5998;line-height:13px;cursor:pointer}
+${S} .mfga-nav-sep{width:172px;height:1px;margin:7px 0 13px 6px;background:#F7F7F7}
+${S} .mfga-nav-more{display:block;padding:5px 0 0 6px;border:0;background:none;color:#3B5998;line-height:13px;cursor:pointer}
 ${S} .mfga-nav-more:hover{text-decoration:underline}
 ${S} .mfga-nav-more-arrow{margin-left:4px;vertical-align:2px}
-${S} .mfga-nav-title{padding:0 0 5px 6px;color:#808080;font-weight:bold;line-height:13px}
+${S} .mfga-nav-title{margin-top:-3px;padding:0 0 5px 6px;color:#808080;font-weight:bold;line-height:13px}
 ${S} .mfga-nav-go-online{display:inline-block;margin-left:6px;line-height:14px}
 `;
 }

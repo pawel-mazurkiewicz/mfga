@@ -61,7 +61,7 @@ function ssrFrames(o, descriptor, prefetched = []) {
   return {
     head: frame(configA),
     beforeMount: frame(configB),
-    afterMount: [frame(entrypointBlock(world, { ...descriptor, elementId: o.mountId })), prefetched.map(frame), frame(lsdEchoBlock(tokens))],
+    afterMount: [frame(entrypointBlock(world, { ...descriptor, elementId: o.mountId, docIds: o.docIds })), prefetched.map(frame), frame(lsdEchoBlock(tokens))],
   };
 }
 

@@ -2,8 +2,10 @@
 //
 // Learns the doc_id and variable shape of the few GraphQL operations MFGA replays by *observing* the
 // requests Facebook itself makes (webRequest, non-blocking). This is invisible to page JavaScript, so it
-// trips none of Facebook's tamper checks. Only an allowlist of operations is kept, and free text the
-// user typed (comment bodies) is blanked before anything is stored.
+// trips none of Facebook's tamper checks. Only an allowlist of operations is kept, and only the variables'
+// shape: what a request was about (post, group, comment text, cursors, session) is blanked before anything is
+// stored (scrub.js). Captures older than a month are dropped.
+import { scrubVariables } from "./scrub.js";
 
 const api = globalThis.browser ?? globalThis.chrome;
 
@@ -17,6 +19,7 @@ const ALLOWED_OPS = new Set([
   "GroupsCometCrossGroupFeedPaginationQuery",
 ]);
 const MAX_VARIABLES_CHARS = 64 * 1024;
+const MAX_AGE_MS = 30 * 86400e3; // like the content script's op cache (data/ops.js)
 
 let learned = null; // name -> { docId, variables, seenAt }
 let loading = null;
@@ -26,9 +29,25 @@ function load() {
   if (learned) return Promise.resolve(learned);
   loading ||= api.storage.local
     .get(STORAGE_KEY)
-    .then((r) => (learned = (r && r[STORAGE_KEY]) || {}))
+    .then((r) => {
+      const stored = (r && r[STORAGE_KEY]) || {};
+      learned = fresh(stored);
+      // Rewrite what an older version stored unscrubbed, or what has expired.
+      if (JSON.stringify(learned) !== JSON.stringify(stored)) scheduleSave();
+      return learned;
+    })
     .catch(() => (learned = {}));
   return loading;
+}
+
+/** Stored captures younger than MAX_AGE_MS, each scrubbed again (entries stored by older versions). */
+function fresh(stored) {
+  const out = {};
+  for (const [name, entry] of Object.entries(stored)) {
+    if (!ALLOWED_OPS.has(name) || !entry || Date.now() - (entry.seenAt || 0) > MAX_AGE_MS) continue;
+    out[name] = { ...entry, variables: scrubVariables(entry.variables ?? null) };
+  }
+  return out;
 }
 
 function scheduleSave() {
@@ -61,16 +80,9 @@ function formField(body, name) {
   return undefined;
 }
 
-/** Removes user-authored free text from mutation variables before they are stored as a template. */
-function scrub(name, variables) {
-  if (name === "useCometUFICreateCommentMutation" && variables?.input?.message) {
-    variables.input.message = { ranges: [], text: "" };
-  }
-  return variables;
-}
-
 function onRequest(details) {
-  if (details.method !== "POST" || !details.requestBody) return;
+  // Private windows (Firefox reports them; Chrome keeps spanning-mode extensions' storage shared with them).
+  if (details.method !== "POST" || !details.requestBody || details.incognito) return;
   const name = formField(details.requestBody, "fb_api_req_friendly_name");
   if (!name || !ALLOWED_OPS.has(name)) return;
   const docId = formField(details.requestBody, "doc_id");
@@ -79,7 +91,7 @@ function onRequest(details) {
   let variables = null;
   if (raw && raw.length <= MAX_VARIABLES_CHARS) {
     try {
-      variables = scrub(name, JSON.parse(raw));
+      variables = scrubVariables(JSON.parse(raw));
     } catch {
       variables = null;
     }

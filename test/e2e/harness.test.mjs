@@ -4,15 +4,15 @@
 
 import { test, describe, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { launchBrowser, ROOT } from "./helpers/browser.mjs";
 import { installSite, renderPage, homePage, filterPage, groupsFeedPage, profilePage, sjsBlocks, configFrame, preloaderOf, prefetchedOf, findInFrames, createWorld, SOURCES, FEED_STYLES, pageFor } from "./helpers/site.mjs";
 import { createMockGraphql, decodeResponse, ERROR_CODES, CHECKPOINT_URL } from "./helpers/mock-graphql.mjs";
-import { userscriptInit } from "./helpers/product.mjs";
+import { userscriptInit, launchTidyBrowser } from "./helpers/product.mjs";
 import { makeTokens, DOC_IDS, DOSSIER_DOC_IDS, jazoest } from "../fixtures/site/ssr.mjs";
 import { catEnc, CATEGORY, TYPENAME_PAIRS, REACTIONS } from "../fixtures/site/graphql-shapes.mjs";
-import { decodeCursor } from "../fixtures/site/feed-pages.mjs";
+import { decodeCursor, feedPage } from "../fixtures/site/feed-pages.mjs";
 import { sha256hex } from "../fixtures/site/world.mjs";
 
 const SHOTS = path.join(ROOT, "test-results/harness");
@@ -183,6 +183,20 @@ describe("mock /api/graphql/", () => {
     assert.equal(mock.invalid().length, 0);
   });
 
+  test("every edge cursor resumes right after that edge, junk edges included", () => {
+    const world = createWorld();
+    for (const name of [...SOURCES, "all", "top"]) {
+      for (let offset = 0; offset < world.feed(name).length + 4; offset += 4) {
+        const page = feedPage(world, name, { offset, size: 4, ctx: { scale: 1, obfuscateCategory: true } });
+        let organicSoFar = 0;
+        page.items.forEach((item, i) => {
+          if (item.story) organicSoFar++;
+          assert.deepEqual(decodeCursor(page.edges[i].cursor), { feedName: name, offset: offset + organicSoFar }, `${name} @${offset} edge ${i}`);
+        });
+      }
+    }
+  });
+
   test("injects every junk kind with the 2026 markers", () => {
     const { mock, feedVars } = fixture();
     const edges = [];
@@ -265,6 +279,27 @@ describe("mock /api/graphql/", () => {
     assert.equal(strict.respond(gqlRequest(strict, "CometModernHomeFeedQuery", vars, { docId: "39999999999999999" })).entry.errorCode, null);
   });
 
+  test("a rotated doc_id reaches freshly rendered pages; the retired one is refused", async () => {
+    const site = await installSite({ route() {}, context: { addCookies: async () => {} } }, { delayMs: 0 });
+    site.mock.rotateDocId("CometModernHomeFeedQuery", "39999999999999999");
+    const pre = preloaderOf(sjsBlocks(site.render("home").html), "CometModernHomeFeedQuery");
+    assert.equal(pre.queryID, "39999999999999999");
+    const vars = feedVariables(pre.variables, "friends");
+    assert.equal(site.mock.respond(gqlRequest(site, "CometModernHomeFeedQuery", vars, { docId: pre.queryID })).entry.errorCode, null);
+    assert.equal(site.mock.respond(gqlRequest(site, "CometModernHomeFeedQuery", vars, { docId: DOC_IDS.CometModernHomeFeedQuery })).entry.errorCode, ERROR_CODES.STALE_DOC);
+  });
+
+  test("a crash inside the mock answers HTTP 500 and is logged, never a hanging request", () => {
+    const { mock, world } = fixture();
+    world.feedback = { ...world.feedback, react: () => { throw new TypeError("boom"); } };
+    const story = world.story(world.feed("friends")[0]);
+    const vars = { input: { feedback_id: story.feedbackId, feedback_reaction_id: REACTIONS.LIKE, actor_id: world.viewer.id, client_mutation_id: "1" }, scale: 1, __relay_internal__pv__CometUFIReactionsEnableShortNamerelayprovider: false };
+    const res = mock.respond(gqlRequest(mock, "CometUFIFeedbackReactMutation", vars));
+    assert.equal(res.status, 500);
+    assert.match(res.entry.problems.join(), /mock crashed: boom/);
+    assert.deepEqual(mock.invalid(), [res.entry]);
+  });
+
   test("like / unlike echo the new counts and change later pages", () => {
     const { mock, world, feedVars } = fixture();
     const story = world.story(world.feed("friends")[0]);
@@ -338,6 +373,8 @@ describe("mock /api/graphql/", () => {
     const redirect = mock.respond(req());
     assert.equal(redirect.status, 302);
     assert.equal(redirect.headers.location, CHECKPOINT_URL);
+    assert.deepEqual(mock.injected().map((e) => e.injected), ["soft-block", "server-error", "checkpoint-html", "checkpoint-redirect"]);
+    assert.deepEqual(mock.invalid(), [], "injected answers are not protocol deviations");
   });
 
   test("log keeps timestamps for pacing checks", async () => {
@@ -374,6 +411,7 @@ describe("in Chromium", () => {
     const landmarks = await home.evaluate(() => ({
       mount: !!document.querySelector('body > div[id^="mount_0_0"]'),
       banner: !!document.querySelector('[role="banner"] [role="navigation"][aria-label="Account Controls and Settings"]'),
+      bannerOrder: [...document.querySelector('[role="banner"]').children].map((c) => (c.querySelector('a[aria-label="Facebook"]') ? "start" : c.querySelector('[role="navigation"] ul') ? "tabs" : c.querySelector("[aria-haspopup]") ? "end" : "?")),
       notifications: document.querySelector('[role="banner"] [aria-label^="Notifications"]')?.getAttribute("aria-label"),
       profile: !!document.querySelector('[role="banner"] [role="button"][aria-label="Your profile"] svg[aria-label="Your profile"] image'),
       shortcuts: !!document.querySelector('[role="navigation"][aria-label="Shortcuts"]'),
@@ -388,7 +426,7 @@ describe("in Chromium", () => {
       cookie: document.cookie.includes("c_user="),
       header: getComputedStyle(document.documentElement).getPropertyValue("--header-height").trim(),
     }));
-    assert.deepEqual(landmarks, { mount: true, banner: true, notifications: "Notifications, 5 unread", profile: true, shortcuts: true, main: true, composer: true, stories: true, feedHeading: true, posts: landmarks.posts, skeleton: true, rail: ["Sponsored", "Birthdays", "Contacts", "Group chats"], contacts: 10, cookie: true, header: "56px" });
+    assert.deepEqual(landmarks, { mount: true, banner: true, bannerOrder: ["start", "tabs", "end"], notifications: "Notifications, 5 unread", profile: true, shortcuts: true, main: true, composer: true, stories: true, feedHeading: true, posts: landmarks.posts, skeleton: true, rail: ["Sponsored", "Birthdays", "Contacts", "Group chats"], contacts: 10, cookie: true, header: "56px" });
     assert.ok(landmarks.posts >= 6);
     await home.screenshot({ path: path.join(SHOTS, "home.png") });
     const filter = await open("/?filter=friends&sk=h_chr");
@@ -460,6 +498,40 @@ describe("in Chromium", () => {
     assert.deepEqual(page.__errors || [], []);
   });
 
+  test("overlapping in-place navigations: the later one wins; body portals follow the page", async () => {
+    const nb = await launchBrowser();
+    try {
+      let slowSite = null;
+      nb.route(
+        (u, r) => u.pathname === "/groups/feed/" && r.method() === "GET",
+        async (route) => {
+          await new Promise((r) => setTimeout(r, 1200));
+          await route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: slowSite.render("groups-feed").html });
+        },
+      );
+      slowSite = await installSite(nb);
+      const page = await nb.newPage({ url: slowSite.url("/") });
+      await page.waitForLoadState("load");
+      const portals = () => page.evaluate(() => document.querySelectorAll("body > template[data-portal]").length);
+      assert.equal(await portals(), 1);
+      await page.evaluate(() => {
+        history.pushState({}, "", "/groups/feed/");
+        window.dispatchEvent(new PopStateEvent("popstate", { state: {} }));
+      });
+      await page.click('[aria-label="Shortcuts"] a[href="https://www.facebook.com/?filter=all&sk=h_chr"]');
+      await page.waitForFunction(() => document.querySelector('[role="navigation"][aria-label="Feeds"]'));
+      await page.waitForTimeout(1600); // the slow /groups/feed/ answer arrives meanwhile and must be dropped
+      assert.deepEqual(await page.evaluate(() => [location.search, !!document.querySelector('[role="navigation"][aria-label="Feeds"]'), !!document.querySelector('[role="feed"]')]), ["?filter=all&sk=h_chr", true, false]);
+      assert.equal(await portals(), 0, "the Feeds page has no composer portal");
+      await page.click('[role="banner"] a[aria-label="Facebook"]');
+      await page.waitForFunction(() => document.querySelector('[role="navigation"][aria-label="Shortcuts"]'));
+      assert.equal(await portals(), 1, "one composer portal per page, not one per visit");
+      assert.deepEqual(page.__errors || [], []);
+    } finally {
+      await nb.close();
+    }
+  });
+
   test("jewels open dropdowns inside the banner; the composer opens a portal dialog", async () => {
     const page = await open("/");
     await page.click('[role="banner"] [role="button"][aria-label^="Notifications"]');
@@ -524,7 +596,7 @@ fetch("/api/graphql/", { method: "POST", headers: { "content-type": "application
   body: new URLSearchParams({ fb_dtsg: dtsg, lsd, fb_api_req_friendly_name: "CometModernHomeFeedQuery", fb_api_caller_class: "RelayModern", server_timestamps: "true", doc_id: "0", variables: "{}" }) })
   .then((r) => r.text()).then((x) => document.documentElement.setAttribute("data-harness", x.length));`,
     );
-    const eb = await launchBrowser({ extensionPath: dir });
+    const eb = await launchTidyBrowser({ extensionPath: dir });
     try {
       const extSite = await installSite(eb);
       const page = await eb.newPage({ url: extSite.url("/") });
@@ -535,6 +607,8 @@ fetch("/api/graphql/", { method: "POST", headers: { "content-type": "application
     } finally {
       await eb.close();
     }
+    assert.equal(eb.profiles.length, 1, "the launch made one browser profile");
+    assert.equal(existsSync(eb.profiles[0]), false, "and close() removed it");
   });
 
   test("userscript init script: start timings, and GM_* values persist across navigations", async () => {

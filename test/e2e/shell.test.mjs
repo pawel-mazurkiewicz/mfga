@@ -76,7 +76,7 @@ async function openShell({ url = `${FB}/`, html = FIXTURE, cfg = {}, viewport } 
 async function settle(page) {
   let last = "";
   for (let i = 0; i < 40; i++) {
-    const vars = await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(document.getElementById("mfga-layout-vars")?.textContent || "")))));
+    const vars = await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r((document.getElementById("mfga-layout-vars")?.textContent || "") + (document.getElementById("mfga-shell")?.style.getPropertyValue("--mfga-footer-top") || ""))))));
     if (vars && vars === last) return vars;
     last = vars;
     await page.waitForTimeout(50);

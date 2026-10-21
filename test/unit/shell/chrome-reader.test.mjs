@@ -11,6 +11,7 @@ import {
   shortcutsFromRows,
   mergeRail,
   railToCache,
+  foreignCache,
 } from "../../../src/fb/chrome-reader.js";
 
 test("parseCount reads the 2026 EN and PL banner labels", () => {
@@ -53,6 +54,31 @@ test("countsFromLabels falls back to position for unknown languages", () => {
   assert.deepEqual(countsFromLabels(["Menü", "Messenger-Chats, 2 ungelesen", "Benachrichtigungen, 4 ungelesen", "Dein Profil"]), { notifications: 4, messages: 2 });
   assert.deepEqual(countsFromLabels(["Menü", "Benachrichtigungen, 4 ungelesen", "Dein Profil"]), { notifications: 4, messages: null });
   assert.deepEqual(countsFromLabels(["a", "b"]), { notifications: null, messages: null });
+});
+
+// The account-controls buttons of three live 2026 sessions, in DOM order, as their accessibility snapshots
+// show them (scratchpad refs: rarestg_nyc-housing-scout examples/feed-snapshot-1.txt, fredheir snapshot.txt,
+// gaiaeyes 2026-08-23 content-library capture). With unread notifications the badge is a button of its own
+// without a label; acting as a Page, Messenger is a link, so it is not among the buttons.
+const LIVE_2026 = {
+  home5: ["Menu", "Messenger", "Notifications, 5 unread", "", "Your profile"],
+  home24: ["Facebook menu", "Messenger", "Notifications, 24 unread", "Your profile"],
+  page4: ["Facebook menu", "Notifications, 4 unread", "", "Your profile"],
+};
+// The same buttons in a language MFGA has no labels for. "Messenger" keeps its brand name.
+const GERMAN = { Menu: "Menü", "Facebook menu": "Facebook-Menü", "Your profile": "Dein Profil" };
+const german = (labels) => labels.map((l) => GERMAN[l] ?? l.replace(/^Notifications, (\d+) unread$/, "Benachrichtigungen, $1 ungelesen"));
+
+test("countsFromLabels reads the live 2026 account controls, badge button and Page profile included", () => {
+  assert.deepEqual(countsFromLabels(LIVE_2026.home5), { notifications: 5, messages: 0 });
+  assert.deepEqual(countsFromLabels(LIVE_2026.home24), { notifications: 24, messages: 0 });
+  assert.deepEqual(countsFromLabels(LIVE_2026.page4), { notifications: 4, messages: null });
+});
+
+test("countsFromLabels: in other languages the live buttons still give the notification count, not the badge's empty label", () => {
+  assert.deepEqual(countsFromLabels(german(LIVE_2026.home5)), { notifications: 5, messages: 0 });
+  assert.deepEqual(countsFromLabels(german(LIVE_2026.home24)), { notifications: 24, messages: 0 });
+  assert.deepEqual(countsFromLabels(german(LIVE_2026.page4)), { notifications: 4, messages: null });
 });
 
 test("parseBirthdays understands every observed sentence shape", () => {
@@ -196,7 +222,21 @@ test("mergeRail without any cache, or with an unknown cache version", () => {
 test("mergeRail never shows another account's cached rail (shared browsers)", () => {
   const other = mergeRail(nothingLive, cached, DAY, "2");
   assert.deepEqual(other, { me: null, groups: [], pages: [], birthdays: [], contacts: null });
-  assert.equal(mergeRail(nothingLive, cached, DAY, null).me.name, "Pat Example", "an unknown viewer can only use what is there");
+});
+
+test("mergeRail shows no cached rail when nobody is signed in (login page after Log Out)", () => {
+  assert.deepEqual(mergeRail(nothingLive, cached, DAY, null), { me: null, groups: [], pages: [], birthdays: [], contacts: null });
+  assert.deepEqual(mergeRail(nothingLive, cached, DAY), { me: null, groups: [], pages: [], birthdays: [], contacts: null });
+  assert.deepEqual(railToCache(nothingLive, cached, DAY, null).groups, [], "nothing of the cache is carried into an anonymous one");
+});
+
+test("foreignCache: a stored rail is deleted when signed out or when another account signs in", () => {
+  assert.equal(foreignCache(cached, null), true, "signed out");
+  assert.equal(foreignCache(cached, "2"), true, "another account");
+  assert.equal(foreignCache({ ...cached, v: 1, userId: undefined }, "1"), true, "an old cache without an owner");
+  assert.equal(foreignCache(cached, "1"), false);
+  assert.equal(foreignCache(null, null), false);
+  assert.equal(foreignCache(undefined, "1"), false);
 });
 
 test("railToCache keeps what was not read live this time, with the time it was read", () => {

@@ -1,25 +1,52 @@
 (() => {
   // src/shared/bridge.js
   var PREFIX = "mfga:";
-  var BRIDGE_CHANNEL = "v1";
-  function serveBridge(channel, handlers) {
-    document.addEventListener(`${PREFIX}${channel}:req`, async (ev) => {
+  var CHANNEL_ATTR = "data-mfga-channel";
+  var CHANNEL_ID = /^[0-9a-f]{32}$/;
+  var dispatch = EventTarget.prototype.dispatchEvent;
+  var Custom = CustomEvent;
+  var detailOf = Object.getOwnPropertyDescriptor(CustomEvent.prototype, "detail")?.get ?? function detail() {
+    return this.detail;
+  };
+  var { parse, stringify } = JSON;
+  var hasOwn = Object.prototype.hasOwnProperty;
+  function randomId() {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    let id = "";
+    for (const b of bytes) id += (b < 16 ? "0" : "") + b.toString(16);
+    return id;
+  }
+  function joinChannel(doc = document) {
+    const html = doc.documentElement;
+    if (!html) return null;
+    const given = html.getAttribute(CHANNEL_ATTR);
+    if (given && CHANNEL_ID.test(given)) {
+      html.removeAttribute(CHANNEL_ATTR);
+      return given;
+    }
+    const id = randomId();
+    html.setAttribute(CHANNEL_ATTR, id);
+    return id;
+  }
+  var message = (type, detail2) => new Custom(type, { __proto__: null, detail: detail2 });
+  function serveBridge(channel2, handlers) {
+    document.addEventListener(`${PREFIX}${channel2}:req`, async (ev) => {
       let msg;
       try {
-        msg = JSON.parse(ev.detail);
+        msg = parse(detailOf.call(ev));
       } catch {
         return;
       }
       if (!msg || typeof msg.id !== "number") return;
       let reply;
       try {
-        const fn = handlers[msg.method];
+        const fn = typeof msg.method === "string" && hasOwn.call(handlers, msg.method) ? handlers[msg.method] : null;
         if (!fn) throw new Error(`unknown method ${msg.method}`);
         reply = { id: msg.id, result: await fn(msg.params || {}) };
       } catch (err) {
         reply = { id: msg.id, error: String(err && err.message || err) };
       }
-      document.dispatchEvent(new CustomEvent(`${PREFIX}${channel}:res`, { detail: JSON.stringify(reply) }));
+      dispatch.call(document, message(`${PREFIX}${channel2}:res`, stringify(reply)));
     });
   }
 
@@ -76,9 +103,12 @@
   }
 
   // src/page/main-world.js
-  serveBridge(BRIDGE_CHANNEL, {
-    requireOp: (params) => requireOp(window, params),
-    navigate: (params) => navigate(window, params),
-    readTokens: (params) => readTokens(window, params)
-  });
+  var channel = joinChannel();
+  if (channel) {
+    serveBridge(channel, {
+      requireOp: (params) => requireOp(window, params),
+      navigate: (params) => navigate(window, params),
+      readTokens: (params) => readTokens(window, params)
+    });
+  }
 })();

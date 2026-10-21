@@ -195,9 +195,10 @@ export function configBlocks(world, tokens, { localeCode, checkpointed = false }
 export const lsdEchoBlock = (tokens) => scheduled({ define: [["LSD", [], { token: tokens.lsd }, 323]], require: [] });
 
 /**
- * CometRootEntryPointRenderer.init with the route's preloaders. preloaders: [{ op, variables, salt }].
+ * CometRootEntryPointRenderer.init with the route's preloaders. preloaders: [{ op, variables, salt }]; docIds: the
+ * deploy's current doc_ids (the mock's, so a rotated id reaches fresh pages).
  */
-export function entrypointBlock(world, { entryPoint, routeProps = {}, routeParams = {}, preloaders, elementId, tracePolicy }) {
+export function entrypointBlock(world, { entryPoint, routeProps = {}, routeParams = {}, preloaders, elementId, tracePolicy, docIds = DOC_IDS }) {
   return scheduled({
     require: [
       [
@@ -210,7 +211,7 @@ export function entrypointBlock(world, { entryPoint, routeProps = {}, routeParam
             cavalryLid: hex(`lid${world.seed}`, 19),
             elementId,
             entryPointRoot: { entryPoint: { __m: entryPoint }, allResources: [{ __dr: entryPoint.replace(".entrypoint", ".react") }, { __dr: entryPoint }], otherProps: { routeProps, routeParams }, entryPointParams: {} },
-            preloaders: preloaders.map((p) => ({ actorID: world.viewer.id, preloaderID: preloaderId(p.op, p.salt), queryID: DOC_IDS[p.op], variables: p.variables, queryName: p.op })),
+            preloaders: preloaders.map((p) => ({ actorID: world.viewer.id, preloaderID: preloaderId(p.op, p.salt), queryID: docIds[p.op], variables: p.variables, queryName: p.op })),
             ssrEnabled: true,
             tracePolicy,
           },

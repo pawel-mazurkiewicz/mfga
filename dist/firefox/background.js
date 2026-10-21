@@ -1,4 +1,57 @@
 (() => {
+  // src/background/scrub.js
+  var isObject = (v) => v != null && typeof v === "object" && !Array.isArray(v);
+  var PER_CALL_KEYS = Object.freeze([
+    // what the request was about
+    "feedback_id",
+    "feedback_reaction_id",
+    "feedback_referrer",
+    "downstream_share_session_origin_uri",
+    "groupID",
+    "id",
+    "reply_comment_parent_fbid",
+    "focusCommentID",
+    "attachments",
+    // who and which call
+    "actor_id",
+    "client_mutation_id",
+    "idempotence_token",
+    // the page's session and navigation chain
+    "session_id",
+    "downstream_share_session_id",
+    "downstream_share_session_start_time",
+    "attribution_id_v2",
+    // paging
+    "cursor",
+    "feedEndCursor",
+    "commentsAfterCursor",
+    "commentsBeforeCursor"
+  ]);
+  var PER_CALL_LISTS = Object.freeze(["recentVPVs"]);
+  function scrubTrackingEntry(entry) {
+    if (typeof entry !== "string" || !entry.startsWith("{")) return null;
+    try {
+      const o = JSON.parse(entry);
+      if (!isObject(o)) return null;
+      if ("conversation_guide_session_id" in o) o.conversation_guide_session_id = null;
+      return JSON.stringify(o);
+    } catch {
+      return null;
+    }
+  }
+  function scrubLevel(o) {
+    for (const key of PER_CALL_KEYS) if (key in o) o[key] = null;
+    for (const key of PER_CALL_LISTS) if (Array.isArray(o[key])) o[key] = [];
+    if (Array.isArray(o.tracking)) o.tracking = o.tracking.map(scrubTrackingEntry).filter(Boolean);
+    if ("message" in o && isObject(o.message)) o.message = { ranges: [], text: "" };
+  }
+  function scrubVariables(variables) {
+    if (!isObject(variables)) return variables;
+    scrubLevel(variables);
+    if (isObject(variables.input)) scrubLevel(variables.input);
+    return variables;
+  }
+
   // src/background/background.js
   var api = globalThis.browser ?? globalThis.chrome;
   var STORAGE_KEY = "mfga:learnedOps";
@@ -11,13 +64,27 @@
     "GroupsCometCrossGroupFeedPaginationQuery"
   ]);
   var MAX_VARIABLES_CHARS = 64 * 1024;
+  var MAX_AGE_MS = 30 * 864e5;
   var learned = null;
   var loading = null;
   var saveTimer = 0;
   function load() {
     if (learned) return Promise.resolve(learned);
-    loading ||= api.storage.local.get(STORAGE_KEY).then((r) => learned = r && r[STORAGE_KEY] || {}).catch(() => learned = {});
+    loading ||= api.storage.local.get(STORAGE_KEY).then((r) => {
+      const stored = r && r[STORAGE_KEY] || {};
+      learned = fresh(stored);
+      if (JSON.stringify(learned) !== JSON.stringify(stored)) scheduleSave();
+      return learned;
+    }).catch(() => learned = {});
     return loading;
+  }
+  function fresh(stored) {
+    const out = {};
+    for (const [name, entry] of Object.entries(stored)) {
+      if (!ALLOWED_OPS.has(name) || !entry || Date.now() - (entry.seenAt || 0) > MAX_AGE_MS) continue;
+      out[name] = { ...entry, variables: scrubVariables(entry.variables ?? null) };
+    }
+    return out;
   }
   function scheduleSave() {
     clearTimeout(saveTimer);
@@ -48,14 +115,8 @@
     }
     return void 0;
   }
-  function scrub(name, variables) {
-    if (name === "useCometUFICreateCommentMutation" && variables?.input?.message) {
-      variables.input.message = { ranges: [], text: "" };
-    }
-    return variables;
-  }
   function onRequest(details) {
-    if (details.method !== "POST" || !details.requestBody) return;
+    if (details.method !== "POST" || !details.requestBody || details.incognito) return;
     const name = formField(details.requestBody, "fb_api_req_friendly_name");
     if (!name || !ALLOWED_OPS.has(name)) return;
     const docId = formField(details.requestBody, "doc_id");
@@ -64,7 +125,7 @@
     let variables = null;
     if (raw && raw.length <= MAX_VARIABLES_CHARS) {
       try {
-        variables = scrub(name, JSON.parse(raw));
+        variables = scrubVariables(JSON.parse(raw));
       } catch {
         variables = null;
       }

@@ -76,6 +76,12 @@ test("tokens delivered later (SPA navigation, refresh) replace older ones; empty
   assert.equal(h.tokens.lsd, "LSD1");
 });
 
+test("three LSD frames per page (live 2026-09): the first is kept, as Facebook's own requests send it", () => {
+  // The live frame shape of samples/live-loggedout-page-frames-2026-10-21.txt, one LSD frame per SSR block.
+  const h = harvestOf([frames(["LSD", [], { token: "LSDFIRST" }, 323]), frames(["LSD", [], { token: "LSDSECOND" }, 323]), frames(["LSD", [], { token: "LSDTHIRD" }, 323])]);
+  assert.equal(h.tokens.lsd, "LSDFIRST");
+});
+
 test("home SSR: feed preloader with its exact variables and the stitched-ready payloads in sequence order", () => {
   const h = harvestOf(HOME.sjs);
   const p = h.preloaders.get("CometModernHomeFeedQuery");

@@ -622,3 +622,44 @@ test("Polish page: verdicts, locale probe and 2010 Polish action labels", async 
   noErrors(page);
   await page.close();
 });
+
+// Real 2026-10-11 posts (test/fixtures/real/, HushFacebookWeb's scrubbed captures): on the live page the message
+// and the attachment share one wrapper, and a rich-text message may hold its own h5/h6 headings.
+const REAL = ["post-group-photo-2026-10-11.html", "post-richtext-video-2026-10-11.html"];
+
+test("real 2026 posts: kept, message and attachments tagged even when they share a wrapper", async () => {
+  const posts = REAL.map((f) => readFileSync(`${ROOT}/test/fixtures/real/${f}`, "utf8"));
+  const html = `<!doctype html><html lang="en"><head><style>/*FB_VARS*/</style></head><body><div role="main"><div id="feed-list">${posts.map((p) => `<div class="fx-slot">${p}</div>`).join("")}</div><div style="height:2000px"></div></div></body></html>`;
+  const page = await browser.newPage({ html: html.replace("/*FB_VARS*/", LIGHT_VARS), url: "https://www.facebook.com/?real=1" });
+  await page.addScriptTag({ content: entry });
+  await startModules(page);
+  const units = await page.evaluate(() =>
+    [...document.querySelectorAll("[aria-posinset]")].map((u) => {
+      const tag = (part) => [...u.querySelectorAll(`[data-mfga-part="${part}"]`)];
+      const message = tag("message")[0] ?? null;
+      const attachments = tag("attachment");
+      const inAttachment = (sel) => [...u.querySelectorAll(sel)].filter((el) => !el.closest('[aria-hidden="true"]')).every((el) => attachments.some((a) => a.contains(el)));
+      return {
+        mark: u.firstElementChild.getAttribute("data-mfga-hide"),
+        message: message?.getAttribute("data-ad-rendering-role") ?? null,
+        attachments: attachments.length,
+        mediaTagged: inAttachment('a[href*="/photo"], video, [data-ad-rendering-role="title"]'),
+        messageNotInAttachment: !attachments.some((a) => a.contains(message)),
+        indent: message ? getComputedStyle(message).marginInlineStart : null,
+        attachmentIndent: attachments[0] ? getComputedStyle(attachments[0]).marginInlineStart : null,
+      };
+    }),
+  );
+  assert.equal(units.length, 2);
+  for (const [i, u] of units.entries()) {
+    assert.equal(u.mark, null, `${REAL[i]}: an organic post is never hidden`);
+    assert.equal(u.message, "story_message", `${REAL[i]}: the message is tagged (rich-text h5 headings inside it are not a shared post)`);
+    assert.ok(u.attachments >= 1, `${REAL[i]}: the photo/video and link card next to the message are tagged`);
+    assert.equal(u.mediaTagged, true, `${REAL[i]}: every photo, video and link card sits in an attachment part`);
+    assert.equal(u.messageNotInAttachment, true);
+    assert.equal(u.indent, "58px");
+    assert.equal(u.attachmentIndent, "74px");
+  }
+  noErrors(page);
+  await page.close();
+});

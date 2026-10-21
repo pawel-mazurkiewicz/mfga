@@ -98,8 +98,8 @@ const MONTHS_PL = ["stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca",
 
 registerStrings({
   en: {
-    "time.seconds.one": "{n} second ago",
-    "time.seconds.other": "{n} seconds ago",
+    "time.seconds.one": "a few seconds ago",
+    "time.seconds.other": "a few seconds ago",
     "time.minute": "about a minute ago",
     "time.minutes.one": "{n} minute ago",
     "time.minutes.other": "{n} minutes ago",
@@ -110,9 +110,9 @@ registerStrings({
     "time.date": "{date} at {time}",
   },
   pl: {
-    "time.seconds.one": "{n} sekundę temu",
-    "time.seconds.few": "{n} sekundy temu",
-    "time.seconds.many": "{n} sekund temu",
+    "time.seconds.one": "kilka sekund temu",
+    "time.seconds.few": "kilka sekund temu",
+    "time.seconds.many": "kilka sekund temu",
     "time.minute": "około minuty temu",
     "time.minutes.one": "{n} minutę temu",
     "time.minutes.few": "{n} minuty temu",

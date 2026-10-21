@@ -34,9 +34,10 @@ import { openSettingsDialog } from "./ui/dialog/settings-dialog.js";
 
 const STYLE_ID = "mfga-style";
 const FEED_SOURCES = ["friends", "groups", "pages", "favorites"];
-// Our first page asks up to four Feeds-tab connections at once, like Facebook's own page load does;
-// everything after that is user-paced ("Older Posts" or scrolling to the end).
-const REQUEST_GAP_MS = 600;
+// At least a second (1-1.5 s, jittered) between our requests, one at a time: Facebook's own page load
+// is far busier. Everything after the first page is user-paced ("Older Posts" or scrolling to the end).
+const REQUEST_GAP_MS = 1000;
+const LAST_SEEN_KEY = "mfga:lastSeen";
 const COMPOSER_SELECTORS = ['[role="region"][aria-label="Create a post"] [role="button"]', '[role="region"][aria-label="Utwórz post"] [role="button"]'];
 
 registerStrings({
@@ -124,11 +125,18 @@ export async function boot(platform) {
   }
   const s0 = settings.get();
   setDebug(s0.advanced.debug);
+  // "auto" reads <html lang>, which may not exist yet at document_start: resolve again once it does.
   setLocale(s0.language);
-  onRoot(safe("paint", () => paint(style, settings.get())));
+  onRoot(
+    safe("paint", () => {
+      setLocale(settings.get().language);
+      paint(style, settings.get());
+    }),
+  );
+  const lastSeen = Number(await platform.storage.get(LAST_SEEN_KEY).catch(() => 0)) || 0;
   health.fact("platform", { kind: platform.kind, version: platform.version, ...(platform.diagnostics || {}) });
 
-  const app = createApp({ platform, settings, harvest, style });
+  const app = createApp({ platform, settings, harvest, style, lastSeen });
   platform.addMenuCommand(t("main.menu"), () => app.openSettings());
   // The master switch has no control in the dialog; userscript managers get a menu entry for it.
   if (platform.kind === "userscript") {
@@ -142,7 +150,7 @@ export async function boot(platform) {
   onBody(safe("boot", () => app.start()));
 }
 
-function createApp({ platform, settings, harvest, style }) {
+function createApp({ platform, settings, harvest, style, lastSeen }) {
   const S = () => settings.get();
   let route = classifyRoute();
   let started = false;
@@ -264,10 +272,21 @@ function createApp({ platform, settings, harvest, style }) {
 
   function buildFeedView(spec) {
     feedView?.destroy?.();
+    let seen = lastSeen;
     feedView = createFeedView({
       actions,
       settings,
-      me: me(),
+      // A getter: the chrome reader may learn who you are after the view is built.
+      get me() {
+        return me();
+      },
+      // The 2010 count pill: stories newer than the previous visit (fixed for this view's lifetime).
+      lastSeen,
+      onSeen: (newest) => {
+        if (!(newest > seen)) return;
+        seen = newest;
+        platform.storage.set(LAST_SEEN_KEY, newest).catch(() => {});
+      },
       open: (url, opts) => (opts?.newTab ? window.open(url, "_blank", "noopener") : navigator.go(url)),
       now: () => Date.now(),
       getFeed,
@@ -358,6 +377,8 @@ function createApp({ platform, settings, harvest, style }) {
   function start() {
     if (started) return;
     started = true;
+    setLocale(S().language);
+    paint(style, S());
     const s = S();
     layout.apply(route);
     if (s.look.shell) {
@@ -395,7 +416,8 @@ function createApp({ platform, settings, harvest, style }) {
     }
     if (!started) return start();
     layout.apply(route);
-    const feedChanged = JSON.stringify(next.feed) !== JSON.stringify(prev.feed) || next.look.shell !== prev.look.shell;
+    const feedChanged =
+      JSON.stringify(next.feed) !== JSON.stringify(prev.feed) || next.look.shell !== prev.look.shell || next.language !== prev.language;
     if (feedChanged && route.mode === "home") {
       feedKey = null; // rebuild with the new sources / mode / keywords
       syncFeed();

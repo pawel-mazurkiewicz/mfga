@@ -197,8 +197,8 @@
   var MONTHS_PL = ["stycznia", "lutego", "marca", "kwietnia", "maja", "czerwca", "lipca", "sierpnia", "września", "października", "listopada", "grudnia"];
   registerStrings({
     en: {
-      "time.seconds.one": "{n} second ago",
-      "time.seconds.other": "{n} seconds ago",
+      "time.seconds.one": "a few seconds ago",
+      "time.seconds.other": "a few seconds ago",
       "time.minute": "about a minute ago",
       "time.minutes.one": "{n} minute ago",
       "time.minutes.other": "{n} minutes ago",
@@ -209,9 +209,9 @@
       "time.date": "{date} at {time}"
     },
     pl: {
-      "time.seconds.one": "{n} sekundę temu",
-      "time.seconds.few": "{n} sekundy temu",
-      "time.seconds.many": "{n} sekund temu",
+      "time.seconds.one": "kilka sekund temu",
+      "time.seconds.few": "kilka sekund temu",
+      "time.seconds.many": "kilka sekund temu",
       "time.minute": "około minuty temu",
       "time.minutes.one": "{n} minutę temu",
       "time.minutes.few": "{n} minuty temu",
@@ -7878,7 +7878,8 @@ ${docId}`;
   // src/main.js
   var STYLE_ID = "mfga-style";
   var FEED_SOURCES2 = ["friends", "groups", "pages", "favorites"];
-  var REQUEST_GAP_MS = 600;
+  var REQUEST_GAP_MS = 1e3;
+  var LAST_SEEN_KEY = "mfga:lastSeen";
   var COMPOSER_SELECTORS = ['[role="region"][aria-label="Create a post"] [role="button"]', '[role="region"][aria-label="Utwórz post"] [role="button"]'];
   registerStrings({
     en: {
@@ -7952,9 +7953,15 @@ ${docId}`;
     const s0 = settings.get();
     setDebug(s0.advanced.debug);
     setLocale(s0.language);
-    onRoot(safe("paint", () => paint(style, settings.get())));
+    onRoot(
+      safe("paint", () => {
+        setLocale(settings.get().language);
+        paint(style, settings.get());
+      })
+    );
+    const lastSeen = Number(await platform2.storage.get(LAST_SEEN_KEY).catch(() => 0)) || 0;
     health.fact("platform", { kind: platform2.kind, version: platform2.version, ...platform2.diagnostics || {} });
-    const app = createApp({ platform: platform2, settings, harvest, style });
+    const app = createApp({ platform: platform2, settings, harvest, style, lastSeen });
     platform2.addMenuCommand(t("main.menu"), () => app.openSettings());
     if (platform2.kind === "userscript") {
       platform2.addMenuCommand(t(s0.enabled ? "main.turnOff" : "main.turnOn"), async () => {
@@ -7966,7 +7973,7 @@ ${docId}`;
     if (!s0.enabled) return;
     onBody(safe("boot", () => app.start()));
   }
-  function createApp({ platform: platform2, settings, harvest, style }) {
+  function createApp({ platform: platform2, settings, harvest, style, lastSeen }) {
     const S3 = () => settings.get();
     let route = classifyRoute();
     let started = false;
@@ -8069,10 +8076,22 @@ ${docId}`;
     }
     function buildFeedView(spec) {
       feedView?.destroy?.();
+      let seen = lastSeen;
       feedView = createFeedView({
         actions,
         settings,
-        me: me2(),
+        // A getter: the chrome reader may learn who you are after the view is built.
+        get me() {
+          return me2();
+        },
+        // The 2010 count pill: stories newer than the previous visit (fixed for this view's lifetime).
+        lastSeen,
+        onSeen: (newest) => {
+          if (!(newest > seen)) return;
+          seen = newest;
+          platform2.storage.set(LAST_SEEN_KEY, newest).catch(() => {
+          });
+        },
         open: (url, opts) => opts?.newTab ? window.open(url, "_blank", "noopener") : navigator2.go(url),
         now: () => Date.now(),
         getFeed,
@@ -8151,6 +8170,8 @@ ${docId}`;
     function start() {
       if (started) return;
       started = true;
+      setLocale(S3().language);
+      paint(style, S3());
       const s = S3();
       layout.apply(route);
       if (s.look.shell) {
@@ -8187,7 +8208,7 @@ ${docId}`;
       }
       if (!started) return start();
       layout.apply(route);
-      const feedChanged = JSON.stringify(next.feed) !== JSON.stringify(prev.feed) || next.look.shell !== prev.look.shell;
+      const feedChanged = JSON.stringify(next.feed) !== JSON.stringify(prev.feed) || next.look.shell !== prev.look.shell || next.language !== prev.language;
       if (feedChanged && route.mode === "home") {
         feedKey = null;
         syncFeed();

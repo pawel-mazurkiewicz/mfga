@@ -61,6 +61,17 @@ const shellShown = (page) =>
     }),
   );
 
+/** Waits until the mock has answered one more `name` request than `before`; returns that request. */
+async function waitForNewRequest(mock, name, before, timeout = 20000) {
+  const end = Date.now() + timeout;
+  for (;;) {
+    const answered = mock.requests(name).filter((e) => e.end);
+    if (answered.length > before) return answered[before];
+    if (Date.now() > end) throw new Error(`no new ${name} request within ${timeout} ms`);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
 const isPrefix = (keys, expected) => keys.length > 0 && keys.every((k, i) => k === expected[i]);
 
 /** Every story is organic, unique, strictly newest first. */
@@ -167,18 +178,22 @@ for (const [target, available, distPath] of TARGETS) {
         const story = page.locator(`#mfga-stream .mfga-story[data-key="${likeable}"]`);
         const before = world.feedback.get(likeable).reactions;
 
+        const reacts = () => mock.requests("CometUFIFeedbackReactMutation").length;
+        let sent = reacts();
         await story.getByRole("button", { name: "Like", exact: true }).first().click();
         await story.getByRole("button", { name: "Unlike", exact: true }).first().waitFor();
-        const like = mock.requests("CometUFIFeedbackReactMutation").at(-1);
-        assert.equal(like.errorCode, null);
+        const like = await waitForNewRequest(mock, "CometUFIFeedbackReactMutation", sent);
+        assert.equal(like.errorCode, null, like.error);
         assert.equal(like.postId, likeable);
         assert.equal(like.reaction, REACTIONS.LIKE);
         assert.equal(world.feedback.get(likeable).reactions, before + 1);
         assert.match(await story.textContent(), /You (and .+ )?like this\./);
 
+        sent = reacts();
         await story.getByRole("button", { name: "Unlike", exact: true }).first().click();
         await story.getByRole("button", { name: "Like", exact: true }).first().waitFor();
-        const unlike = mock.requests("CometUFIFeedbackReactMutation").at(-1);
+        const unlike = await waitForNewRequest(mock, "CometUFIFeedbackReactMutation", sent);
+        assert.equal(unlike.errorCode, null, unlike.error);
         assert.equal(unlike.reaction, "0");
         assert.equal(world.feedback.get(likeable).reactions, before);
 
@@ -188,9 +203,10 @@ for (const [target, available, distPath] of TARGETS) {
         await groupStory.getByRole("button", { name: "Comment", exact: true }).first().click();
         const box = groupStory.locator("textarea").first();
         await box.fill("Greetings from 2010!");
+        const commentsSent = mock.requests("useCometUFICreateCommentMutation").length;
         await box.press("Enter");
+        const comment = await waitForNewRequest(mock, "useCometUFICreateCommentMutation", commentsSent);
         await groupStory.getByText("Greetings from 2010!").first().waitFor({ timeout: 20000 });
-        const comment = mock.requests("useCometUFICreateCommentMutation").at(-1);
         assert.equal(comment.errorCode, null, comment.error);
         assert.equal(comment.groupID, world.story(groupKey).to.id, "groupID is the owning group");
         assert.ok(world.feedback.get(groupKey).comments.some((c) => c.text === "Greetings from 2010!"));
@@ -332,8 +348,8 @@ for (const [target, available, distPath] of TARGETS) {
         await page.waitForFunction(() => document.documentElement.getAttribute("data-mfga-route") === "page");
         await page.goBack();
         await page.waitForFunction(() => location.pathname === "/" && document.documentElement.getAttribute("data-mfga-route") === "home");
+        await page.waitForFunction(() => document.querySelector('[role="main"]')?.contains(document.getElementById("mfga-stream")), null, { timeout: 20000 });
         await waitForStories(page, 3);
-        assert.equal(await page.evaluate(() => document.querySelector('[role="main"]').contains(document.getElementById("mfga-stream"))), true, "#mfga-stream is back in [role=main]");
         assertNoPageErrors(page);
       });
     });

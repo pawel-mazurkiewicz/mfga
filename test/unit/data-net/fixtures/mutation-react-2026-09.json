@@ -1,0 +1,30 @@
+{
+  "_provenance": "hopfian/fbk captured CometUFIFeedbackReactMutation 2026-09-18 (ids synthetic by its author); tracking blob replaced.",
+  "variables_LIKE": {
+    "input": {
+      "attribution_id_v2": "CometHomeRoot.react,comet.home,via_cold_start,1789727958490,883891,4748854339,,",
+      "feedback_id": "ZmVlZGJhY2s6MzkzNzAyNDMyOTc3NDAzNg==",
+      "feedback_reaction_id": "1635855486666999",
+      "feedback_source": "NEWS_FEED",
+      "feedback_referrer": "/sample.page/posts/pfbid02SampleSyntheticPostToken0123456789abcdef",
+      "is_tracking_encrypted": true,
+      "tracking": [
+        "<encrypted tracking>"
+      ],
+      "session_id": "fd0d4d15-2063-4af1-9a4c-cfbbd9f2014f",
+      "downstream_share_session_id": "d90ac567-aeaf-49df-ba06-ef372e6aff59",
+      "downstream_share_session_origin_uri": "https://www.facebook.com/sample.page/posts/pfbid02SampleSyntheticPostToken0123456789abcdef",
+      "downstream_share_session_start_time": "1789727933949",
+      "actor_id": "12345678901234",
+      "client_mutation_id": "1"
+    },
+    "scale": 1,
+    "canUseNicknameOnComet": false,
+    "useDefaultActor": false,
+    "__relay_internal__pv__CometUFIReactionsEnableShortNamerelayprovider": false
+  },
+  "variables_REMOVE_diff": {
+    "input.feedback_reaction_id": "0",
+    "input.client_mutation_id": "2"
+  }
+}

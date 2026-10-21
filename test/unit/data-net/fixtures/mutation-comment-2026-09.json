@@ -1,0 +1,44 @@
+{
+  "_provenance": "hopfian/fbk captured useCometUFICreateCommentMutation 2026-09-18, group permalink dialog (ids synthetic by its author); tracking blob replaced.",
+  "variables": {
+    "feedLocation": "POST_PERMALINK_DIALOG",
+    "feedbackSource": 2,
+    "groupID": "12345678901234567",
+    "input": {
+      "client_mutation_id": "1",
+      "attachments": null,
+      "feedback_id": "ZmVlZGJhY2s6MzkzNzM0MTU2NjQwODk3OQ==",
+      "formatting_style": null,
+      "is_inline_vote_enabled_for_qna": false,
+      "message": {
+        "ranges": [],
+        "text": "👍"
+      },
+      "attribution_id_v2": "CometSinglePostDialogRoot.react,comet.post.single_dialog,unexpected,1789729322369,916215,,,;CometHomeRoot.react,comet.home,unexpected,1789729318461,482067,4748854339,,;CometSinglePostDialogRoot.react,comet.post.single_dialog,via_cold_start,1789729309987,738257,,,",
+      "vod_video_timestamp": null,
+      "is_tracking_encrypted": true,
+      "tracking": [
+        "<encrypted tracking>",
+        "{\"assistant_caller\":\"comet_above_composer\",\"conversation_guide_session_id\":\"2207beac-883e-4ac4-bda6-e0051b61a3f8\",\"conversation_guide_shown\":null}"
+      ],
+      "feedback_source": "OBJECT",
+      "idempotence_token": "client:c34d1b66-e5ec-48b2-8ed2-a876c730b209",
+      "session_id": "ab1066e3-a2f1-453c-ba08-4536f0dc114e",
+      "downstream_share_session_id": "91047c1e-02d9-4f13-bb7a-685bd1f49f84",
+      "downstream_share_session_origin_uri": "https://www.facebook.com/sample.page/posts/pfbid02SampleSyntheticPostToken0123456789abcdef",
+      "downstream_share_session_start_time": "1789729310366"
+    },
+    "inviteShortLinkKey": null,
+    "renderLocation": null,
+    "scale": 1,
+    "useDefaultActor": false,
+    "focusCommentID": null,
+    "translationType": "AUTO_TRANSLATE",
+    "canUseNicknameOnComet": false,
+    "__relay_internal__pv__groups_comet_use_glvrelayprovider": false,
+    "__relay_internal__pv__CometUFICommentActionLinksRewriteEnabledrelayprovider": true,
+    "__relay_internal__pv__CometUFICommentAvatarStickerAnimatedImagerelayprovider": false,
+    "__relay_internal__pv__IsWorkUserrelayprovider": false,
+    "__relay_internal__pv__CometUFICommentAutoTranslationTyperelayprovider": "AUTO_TRANSLATE"
+  }
+}

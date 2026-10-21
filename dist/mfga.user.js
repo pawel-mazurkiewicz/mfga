@@ -1084,6 +1084,12 @@ ${P("message")} a, ${P("message")} a *, ${P("message")} [role="button"] { color:
 
 ${P("attachment")} { margin-inline: calc(var(--mfga-indent) + 16px) 16px !important; }
 ${P("attachment")} * { border-radius: 0 !important; }
+/* Shared posts and reels inside an attachment: square avatars and blue names, like the post's own header. */
+${P("attachment")} svg g[mask] { mask: none !important; }
+${P("attachment")} svg g[mask] > :not(image) { display: none !important; }
+${P("attachment")} [data-ad-rendering-role="profile_name"] a, ${P("attachment")} [data-ad-rendering-role="profile_name"] a * {
+  color: #3B5998 !important; font-weight: bold !important;
+}
 
 ${P("actions")} {
   display: flex !important; flex-wrap: wrap !important; justify-content: flex-start !important; align-items: center !important;
@@ -1270,6 +1276,9 @@ ${S2} .mfga-nav-me-view{display:block}
 ${S2} .mfga-nav-link{position:relative;display:block;min-height:17px;padding:3px 8px 0 28px;border-bottom:1px solid #fff;color:#333;line-height:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 ${S2} .mfga-nav-link:hover{background:#EFF2F7;text-decoration:none}
 ${S2} .mfga-nav-selected .mfga-nav-link{margin-right:-1px;background:#D8DFEA;font-weight:bold}
+${S2} .mfga-nav-sub{margin:0;padding:0;list-style:none}
+${S2} .mfga-nav-sub .mfga-nav-link{padding-left:46px}
+${S2} .mfga-nav-sub .mfga-nav-icon{left:24px}
 ${S2} .mfga-nav-icon{position:absolute;left:6px;top:3px;display:flex;align-items:center;justify-content:center;width:16px;height:16px}
 ${S2} .mfga-nav-pic{display:block;width:16px;height:16px;object-fit:cover}
 ${S2} .mfga-nav-count{color:#808080;font-weight:normal}
@@ -3688,6 +3697,7 @@ ${docId}`;
   var HOST_ID = "mfga-shell";
   var VARS_ID = "mfga-layout-vars";
   var ENSURE_MS = 1e3;
+  var PUSH_VIEW_MIN_WIDTH = 450;
   var hasColumns = (mode) => mode === "home" || mode === "groups-feed";
   function readSettings(settings) {
     return (typeof settings?.get === "function" ? settings.get() : settings) || DEFAULTS;
@@ -3724,7 +3734,13 @@ ${docId}`;
   }
   function pushViewOpen(doc = document) {
     const root = mountRoot(doc);
-    return !!root && [...root.querySelectorAll('[role="dialog"]')].some((d) => !d.closest('[role="banner"]'));
+    if (!root) return false;
+    const mid = doc.documentElement.clientWidth / 2;
+    return [...root.querySelectorAll('[role="dialog"]')].some((d) => {
+      if (d.closest('[role="banner"]')) return false;
+      const r = d.getBoundingClientRect();
+      return r.width >= PUSH_VIEW_MIN_WIDTH && r.left <= mid && r.right >= mid;
+    });
   }
   function findBanner(doc = document) {
     return [...doc.querySelectorAll('[role="banner"]')].find((b) => !b.closest(`[role="dialog"], #${HOST_ID}`)) || null;
@@ -4436,7 +4452,8 @@ ${docId}`;
       suggestedPanels: ["Wydarzenia, które mogą Ci się spodobać", "Proponowane wydarzenia"],
       // dictionary
       suggestedHeaders: ["Propozycje dla Ciebie", "Proponowane dla Ciebie", "Polecany post", "Proponowany post z grupy publicznej"],
-      ai: ["Informacje o SI"],
+      ai: ["Informacje o SI", "Informacje SI"],
+      // both in Facebook's Polish string table
       metaAI: ["Meta AI"],
       memories: ["Wspomnienia"]
     }
@@ -4855,10 +4872,14 @@ ${docId}`;
     function touch() {
       if (!onStats || statsTimer || stopped) return;
       statsTimer = setTimeout(
-        safe("cleaner", () => {
-          statsTimer = 0;
-          if (!stopped) onStats(snapshot());
-        }),
+        safe(
+          "cleaner",
+          () => {
+            statsTimer = 0;
+            if (!stopped) onStats(snapshot());
+          },
+          { disableOnError: false }
+        ),
         250
       );
     }
@@ -5220,6 +5241,10 @@ ${docId}`;
       "header.logout": "Log Out",
       "nav.viewProfile": "View My Profile",
       "nav.newsFeed": "News Feed",
+      "nav.feed.friends": "Friends",
+      "nav.feed.groups": "Groups",
+      "nav.feed.pages": "Pages",
+      "nav.feed.favorites": "Favorites",
       "nav.messages": "Messages",
       "nav.events": "Events",
       "nav.photos": "Photos",
@@ -5285,6 +5310,10 @@ ${docId}`;
       "header.logout": "Wyloguj",
       "nav.viewProfile": "Zobacz mój profil",
       "nav.newsFeed": "Aktualności",
+      "nav.feed.friends": "Znajomi",
+      "nav.feed.groups": "Grupy",
+      "nav.feed.pages": "Strony",
+      "nav.feed.favorites": "Ulubione",
       "nav.messages": "Wiadomości",
       "nav.events": "Wydarzenia",
       "nav.photos": "Zdjęcia",
@@ -5366,8 +5395,15 @@ ${docId}`;
   function navItem(key, icon2, href, { count: count2 = 0, selected = false, arrow = false } = {}) {
     return { key, icon: icon2, label: t(`nav.${key}`), href, count: count2 > 0 ? count2 : 0, selected, arrow };
   }
+  var FEED_FILTERS = [
+    ["friends", "nav_friends"],
+    ["groups", "nav_groups"],
+    ["pages", "nav_pages"],
+    ["favorites", "nav_favorites"]
+  ];
   function leftNavModel({ route, identity, counts, shortcuts, contacts }) {
     const mode = route?.mode;
+    const filter = mode === "home" ? route?.filter || null : null;
     const groups = shortcuts?.groups || [];
     const pages = shortcuts?.pages || [];
     const unreadGroups = groups.filter((g) => g.count > 0).length;
@@ -5375,7 +5411,7 @@ ${docId}`;
     return {
       me: { name: identity?.name || null, url: identity?.url || `${FB}/me/`, avatar: identity?.avatar || null },
       primary: [
-        navItem("newsFeed", "nav_news_feed", `${FB}/`, { selected: mode === "home" }),
+        navItem("newsFeed", "nav_news_feed", `${FB}/`, { selected: mode === "home" && !filter }),
         navItem("messages", "nav_messages", `${FB}/messages/`, { count: counts?.messages }),
         navItem("events", "nav_events", `${FB}/events/`),
         navItem("photos", "nav_photos", photosUrl(identity?.url)),
@@ -5392,6 +5428,10 @@ ${docId}`;
         navItem("video", "nav_video", `${FB}/watch/`),
         navItem("marketplace", "nav_marketplace", `${FB}/marketplace/`)
       ],
+      feeds: mode === "home" ? FEED_FILTERS.map(([key, ico]) => ({
+        ...navItem(`feed_${key}`, ico, `${FB}/?filter=${key}&sk=h_chr`, { selected: filter === key }),
+        label: t(`nav.feed.${key}`)
+      })) : [],
       groups: groups.map(toRow),
       pages: pages.map(toRow),
       chat: (contacts || []).filter((c) => c.online).slice(0, MAX_CHAT).map((c) => ({ label: c.name, href: c.url }))
@@ -5593,6 +5633,9 @@ ${docId}`;
       )
     );
   }
+  function feedFilters(items) {
+    return h("li.mfga-nav-item.mfga-nav-subwrap", h("ul.mfga-nav-list.mfga-nav-sub", items.map(navRow)));
+  }
   function shortcutRow(item, fallbackIcon) {
     return h(
       "li.mfga-nav-item",
@@ -5637,7 +5680,7 @@ ${docId}`;
     );
     return [
       me(model),
-      h("ul.mfga-nav-list", model.primary.map(navRow)),
+      h("ul.mfga-nav-list", model.primary.flatMap((item) => item.key === "newsFeed" && model.feeds?.length ? [navRow(item), feedFilters(model.feeds)] : [navRow(item)])),
       h("div.mfga-nav-sep"),
       h("ul.mfga-nav-list", model.apps.map(navRow), more),
       section(t("nav.groups"), model.groups, "nav_groups"),
@@ -6219,10 +6262,10 @@ ${docId}`;
       })
     );
   }
-  function playVideo(thumb, att, src, size) {
+  function playVideo(thumb, poster, src, size) {
     const video = h("video.mfga-att-player", {
       src,
-      poster: safeUrl(att.poster),
+      poster,
       controls: true,
       autoplay: true,
       preload: "none",
@@ -6236,7 +6279,8 @@ ${docId}`;
   }
   function renderVideo(att, story) {
     const size = fitBox(att.width, att.height, VIDEO_BOX.w, VIDEO_BOX.h);
-    const poster = att.poster ? h("img", { src: att.poster, alt: "", loading: "lazy", decoding: "async", width: size.width, height: size.height }) : null;
+    const posterUrl = safeUrl(att.poster);
+    const poster = posterUrl ? h("img", { src: posterUrl, alt: "", loading: "lazy", decoding: "async", width: size.width, height: size.height }) : null;
     const thumb = link(
       att.href || story.url,
       { class: "mfga-att-video-thumb", style: { width: size.width, height: size.height }, "aria-label": t("story.play"), role: "button" },
@@ -6250,7 +6294,7 @@ ${docId}`;
         "click",
         guard((ev) => {
           if (ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
-          if (playVideo(thumb, att, src, size)) ev.preventDefault();
+          if (playVideo(thumb, posterUrl, src, size)) ev.preventDefault();
         })
       );
     }
@@ -7867,22 +7911,26 @@ ${docId}`;
   registerStrings({
     en: {
       "main.menu": "MFGA settings",
+      "main.turnOff": "Turn MFGA off (back to 2026 Facebook)",
+      "main.turnOn": "Turn MFGA on",
       "main.halted": "MFGA paused its own requests because Facebook asked to verify your account. Facebook itself is unaffected."
     },
     pl: {
       "main.menu": "Ustawienia MFGA",
+      "main.turnOff": "Wyłącz MFGA (powrót do Facebooka 2026)",
+      "main.turnOn": "Włącz MFGA",
       "main.halted": "MFGA wstrzymało własne zapytania, bo Facebook poprosił o weryfikację konta. Sam Facebook działa normalnie."
     }
   });
   function buildCss(settings) {
     return [
-      iconCss(),
       baseCss(settings),
+      dialogCss(),
+      iconCss(),
       themeCss(settings),
       nativeCss(settings),
       shellCss(settings),
       streamCss(settings),
-      dialogCss(),
       // Our News Feed replaces Facebook's home column; "pending" keeps Facebook's column invisible (but laid
       // out) while we decide, so there is no flash of the 2026 feed.
       'html[data-mfga-feed="ours"] [data-mfga-main]>:not(#mfga-stream){display:none!important}',
@@ -7890,11 +7938,12 @@ ${docId}`;
       'html:not([data-mfga-feed="ours"]) #mfga-stream{display:none!important}'
     ].join("\n");
   }
+  var MEDIA_ROUTE = /^\/(photo|photos|reel|reels|stories|watch|video|videos)(\/|\.php|$)/;
   function applyRootAttributes(s) {
     const html = document.documentElement;
     if (!html) return;
     html.toggleAttribute("data-mfga", !!s.enabled);
-    html.toggleAttribute("data-mfga-theme", !!(s.enabled && s.look.theme));
+    html.toggleAttribute("data-mfga-theme", !!(s.enabled && s.look.theme && !MEDIA_ROUTE.test(location.pathname)));
     html.toggleAttribute("data-mfga-skin", !!(s.enabled && s.look.skinPosts));
     html.setAttribute("data-mfga-font", s.look.font);
   }
@@ -7935,6 +7984,12 @@ ${docId}`;
     health.fact("platform", { kind: platform.kind, version: platform.version, ...platform.diagnostics || {} });
     const app = createApp({ platform, settings, harvest, style });
     platform.addMenuCommand(t("main.menu"), () => app.openSettings());
+    if (platform.kind === "userscript") {
+      platform.addMenuCommand(t(s0.enabled ? "main.turnOff" : "main.turnOn"), async () => {
+        await settings.update({ enabled: !settings.get().enabled });
+        location.reload();
+      });
+    }
     settings.subscribe((next, prev) => app.onSettings(next, prev));
     if (!s0.enabled) return;
     onBody(safe("boot", () => app.start()));
@@ -8046,7 +8101,7 @@ ${docId}`;
         actions,
         settings,
         me: me2(),
-        open: (url) => navigator2.go(url),
+        open: (url, opts) => opts?.newTab ? window.open(url, "_blank", "noopener") : navigator2.go(url),
         now: () => Date.now(),
         getFeed,
         mode: spec.mode,
@@ -8112,6 +8167,7 @@ ${docId}`;
     );
     function onRoute(next) {
       route = next;
+      applyRootAttributes(S3());
       layout.apply(route);
       shell?.update?.({ route });
       cleaner?.setRoute?.(route);
@@ -8147,12 +8203,10 @@ ${docId}`;
       setInterval(remount, 1e3);
     }
     function onSettings(next, prev) {
-      paint(style, next);
       setDebug(next.advanced.debug);
-      if (next.language !== prev.language) {
-        setLocale(next.language);
-        shell?.update?.({});
-      }
+      if (next.language !== prev.language) setLocale(next.language);
+      paint(style, next);
+      if (next.language !== prev.language) shell?.update?.({});
       if (next.feed.hideAI !== prev.feed.hideAI) classifier = createClassifier({ hideAI: next.feed.hideAI });
       if (!next.enabled) {
         layout.apply(route);

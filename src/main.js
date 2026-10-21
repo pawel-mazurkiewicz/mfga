@@ -268,7 +268,7 @@ function createApp({ platform, settings, harvest, style }) {
       actions,
       settings,
       me: me(),
-      open: (url) => navigator.go(url),
+      open: (url, opts) => (opts?.newTab ? window.open(url, "_blank", "noopener") : navigator.go(url)),
       now: () => Date.now(),
       getFeed,
       mode: spec.mode,

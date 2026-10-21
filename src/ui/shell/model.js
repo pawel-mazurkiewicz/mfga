@@ -36,8 +36,17 @@ function navItem(key, icon, href, { count = 0, selected = false, arrow = false }
   return { key, icon, label: t(`nav.${key}`), href, count: count > 0 ? count : 0, selected, arrow };
 }
 
+// The Feeds-tab connections MFGA merges; under News Feed they work like 2010's feed filters.
+const FEED_FILTERS = [
+  ["friends", "nav_friends"],
+  ["groups", "nav_groups"],
+  ["pages", "nav_pages"],
+  ["favorites", "nav_favorites"],
+];
+
 export function leftNavModel({ route, identity, counts, shortcuts, contacts }) {
   const mode = route?.mode;
+  const filter = mode === "home" ? route?.filter || null : null;
   const groups = shortcuts?.groups || [];
   const pages = shortcuts?.pages || [];
   const unreadGroups = groups.filter((g) => g.count > 0).length;
@@ -45,7 +54,7 @@ export function leftNavModel({ route, identity, counts, shortcuts, contacts }) {
   return {
     me: { name: identity?.name || null, url: identity?.url || `${FB}/me/`, avatar: identity?.avatar || null },
     primary: [
-      navItem("newsFeed", "nav_news_feed", `${FB}/`, { selected: mode === "home" }),
+      navItem("newsFeed", "nav_news_feed", `${FB}/`, { selected: mode === "home" && !filter }),
       navItem("messages", "nav_messages", `${FB}/messages/`, { count: counts?.messages }),
       navItem("events", "nav_events", `${FB}/events/`),
       navItem("photos", "nav_photos", photosUrl(identity?.url)),
@@ -62,6 +71,13 @@ export function leftNavModel({ route, identity, counts, shortcuts, contacts }) {
       navItem("video", "nav_video", `${FB}/watch/`),
       navItem("marketplace", "nav_marketplace", `${FB}/marketplace/`),
     ],
+    feeds:
+      mode === "home"
+        ? FEED_FILTERS.map(([key, ico]) => ({
+            ...navItem(`feed_${key}`, ico, `${FB}/?filter=${key}&sk=h_chr`, { selected: filter === key }),
+            label: t(`nav.feed.${key}`),
+          }))
+        : [],
     groups: groups.map(toRow),
     pages: pages.map(toRow),
     chat: (contacts || []).filter((c) => c.online).slice(0, MAX_CHAT).map((c) => ({ label: c.name, href: c.url })),

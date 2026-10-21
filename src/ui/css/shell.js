@@ -99,6 +99,9 @@ ${S} .mfga-nav-me-view{display:block}
 ${S} .mfga-nav-link{position:relative;display:block;min-height:17px;padding:3px 8px 0 28px;border-bottom:1px solid #fff;color:#333;line-height:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 ${S} .mfga-nav-link:hover{background:#EFF2F7;text-decoration:none}
 ${S} .mfga-nav-selected .mfga-nav-link{margin-right:-1px;background:#D8DFEA;font-weight:bold}
+${S} .mfga-nav-sub{margin:0;padding:0;list-style:none}
+${S} .mfga-nav-sub .mfga-nav-link{padding-left:46px}
+${S} .mfga-nav-sub .mfga-nav-icon{left:24px}
 ${S} .mfga-nav-icon{position:absolute;left:6px;top:3px;display:flex;align-items:center;justify-content:center;width:16px;height:16px}
 ${S} .mfga-nav-pic{display:block;width:16px;height:16px;object-fit:cover}
 ${S} .mfga-nav-count{color:#808080;font-weight:normal}

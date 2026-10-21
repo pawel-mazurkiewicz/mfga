@@ -19,6 +19,10 @@ registerStrings({
 
     "nav.viewProfile": "View My Profile",
     "nav.newsFeed": "News Feed",
+    "nav.feed.friends": "Friends",
+    "nav.feed.groups": "Groups",
+    "nav.feed.pages": "Pages",
+    "nav.feed.favorites": "Favorites",
     "nav.messages": "Messages",
     "nav.events": "Events",
     "nav.photos": "Photos",
@@ -88,6 +92,10 @@ registerStrings({
 
     "nav.viewProfile": "Zobacz mój profil",
     "nav.newsFeed": "Aktualności",
+    "nav.feed.friends": "Znajomi",
+    "nav.feed.groups": "Grupy",
+    "nav.feed.pages": "Strony",
+    "nav.feed.favorites": "Ulubione",
     "nav.messages": "Wiadomości",
     "nav.events": "Wydarzenia",
     "nav.photos": "Zdjęcia",

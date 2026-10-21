@@ -24,6 +24,11 @@ function navRow(item) {
   );
 }
 
+/** 2010 showed News Feed's filters indented under it while you were on the home page. */
+function feedFilters(items) {
+  return h("li.mfga-nav-item.mfga-nav-subwrap", h("ul.mfga-nav-list.mfga-nav-sub", items.map(navRow)));
+}
+
 /** A group or Page shortcut: its 16px picture stands where the 2010 nav icon was. */
 function shortcutRow(item, fallbackIcon) {
   return h(
@@ -81,7 +86,7 @@ export function renderLeftCol(model, { expanded = false, onMore, showChat = true
       );
   return [
     me(model),
-    h("ul.mfga-nav-list", model.primary.map(navRow)),
+    h("ul.mfga-nav-list", model.primary.flatMap((item) => (item.key === "newsFeed" && model.feeds?.length ? [navRow(item), feedFilters(model.feeds)] : [navRow(item)]))),
     h("div.mfga-nav-sep"),
     h("ul.mfga-nav-list", model.apps.map(navRow), more),
     section(t("nav.groups"), model.groups, "nav_groups"),

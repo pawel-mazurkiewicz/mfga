@@ -380,6 +380,23 @@ describe("MFGA userscript: wiring (src/main.js)", { skip: !hasUserscript() && `n
     });
   });
 
+  test("a link inside the photo viewer leads to its page: Home is not kept under it", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p, errors) => {
+      const page = await p.open("/");
+      await waitStories(page, 10);
+      const photo = page.locator("#mfga-stream a.mfga-att-photo").first();
+      await photo.scrollIntoViewIfNeeded();
+      await photo.click();
+      await page.waitForSelector("[data-fake-push-view]", { timeout: 10000 });
+      await page.waitForFunction(() => document.documentElement.getAttribute("data-mfga-route") === "home", null, { timeout: 5000 });
+      await page.locator("[data-fake-push-view] a").click();
+      await page.waitForFunction(() => location.pathname === "/photos/" && document.documentElement.getAttribute("data-mfga-route") === "page", null, { timeout: 5000 });
+      assert.equal(await feedAttr(page), null);
+      assert.ok(!(await page.evaluate(() => document.getElementById("mfga-stream")?.isConnected)), "our stream is out of Facebook's page");
+      assert.deepEqual(errors, []);
+    });
+  });
+
   test("Back from a page opened from our feed returns to the same stream at the same place", { timeout: TIMEOUT }, async () => {
     await withProduct("userscript", async (p, errors) => {
       const page = await p.open("/");

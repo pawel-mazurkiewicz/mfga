@@ -120,7 +120,8 @@ Leaving and coming back (`src/main.js`):
   mounted under its viewer. While a push view (`pushViewOpen()`, a wide centred dialog) is open, main keeps
   the previous route on screen for the layout, the shell, the cleaner and our stream. Comet shows the viewer
   a moment after the URL changes, so main looks again 150, 400, 800 and 1500 ms later and puts Home back if
-  the viewer shows up; a viewer gone for two remount ticks without a URL change hands over to the URL's route.
+  the viewer shows up. A viewer missing at two checks in a row (it led to another page), or for two remount
+  ticks, hands over to the URL's route.
 * Away from Home the stream is detached but kept (same feed signature, same stories, no request). Back on
   Home it is re-attached at once, and after Back/Forward (a trusted `popstate`) or a push view the window is
   scrolled to where the reader was, re-asserted for 2 s while Facebook re-renders the column, until the

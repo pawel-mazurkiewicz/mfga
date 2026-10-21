@@ -8471,6 +8471,7 @@ ${docId}`;
     let haltNotice = null;
     let pushBase = null;
     let pushGoneTicks = 0;
+    let settling = 0;
     let homeY = 0;
     let lastTraversal = -Infinity;
     const shellNavigator = {
@@ -8684,11 +8685,7 @@ ${docId}`;
         if (route.mode === "home" && document.documentElement.getAttribute("data-mfga-feed") === "ours") mountFeed();
         mountHaltNotice();
         pushGoneTicks = pushBase && !pushViewOpen() ? pushGoneTicks + 1 : 0;
-        if (pushGoneTicks >= 2) {
-          pushBase = null;
-          pushGoneTicks = 0;
-          showRoute(classifyRoute());
-        }
+        if (pushGoneTicks >= 2) releasePushView();
       },
       { disableOnError: false }
     );
@@ -8703,10 +8700,14 @@ ${docId}`;
     function onRoute(next) {
       const base = pushBase || route;
       const fromFeed = base.mode === "home" || base.mode === "groups-feed";
-      if (next.mode === "page" && fromFeed && pushViewOpen()) return keepUnderPushView(base);
+      if (next.mode === "page" && fromFeed && pushViewOpen()) {
+        keepUnderPushView(base);
+        watchPushView(base);
+        return;
+      }
       pushBase = null;
       showRoute(next, { restore: performance.now() - lastTraversal < TRAVERSAL_MS });
-      if (next.mode === "page" && fromFeed) watchForPushView(base);
+      if (next.mode === "page" && fromFeed) watchPushView(base);
     }
     function showRoute(next, { restore = false } = {}) {
       const returning = next.mode === "home" && route.mode !== "home";
@@ -8728,15 +8729,28 @@ ${docId}`;
       pushGoneTicks = 0;
       if (relayout) showRoute(base, { restore: true });
     }
-    function watchForPushView(base) {
+    function releasePushView() {
+      pushBase = null;
+      pushGoneTicks = 0;
+      showRoute(classifyRoute());
+    }
+    function watchPushView(base) {
       const key = routeKey();
+      let gone = 0;
       for (const ms of PUSH_VIEW_CHECKS_MS) {
         setTimeout(() => {
-          if (!pushBase && routeKey() === key && pushViewOpen()) keepUnderPushView(base);
+          if (routeKey() !== key) return;
+          if (!pushBase) {
+            if (route.mode === "page" && pushViewOpen()) keepUnderPushView(base);
+            return;
+          }
+          gone = pushViewOpen() ? 0 : gone + 1;
+          if (gone >= 2) releasePushView();
         }, ms);
       }
     }
     function settleReturn(y) {
+      const run = ++settling;
       const until = performance.now() + RETURN_SETTLE_MS;
       const inputs = ["wheel", "touchstart", "keydown", "mousedown"];
       let stopped = false;
@@ -8745,7 +8759,7 @@ ${docId}`;
       };
       for (const type of inputs) addEventListener(type, stop, { capture: true, passive: true });
       const step = () => {
-        if (stopped || route.mode !== "home" || performance.now() > until) {
+        if (stopped || run !== settling || route.mode !== "home" || performance.now() > until) {
           for (const type of inputs) removeEventListener(type, stop, true);
           return;
         }

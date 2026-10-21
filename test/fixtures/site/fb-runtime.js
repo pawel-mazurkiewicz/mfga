@@ -114,7 +114,11 @@
       close.setAttribute("aria-label", "Close");
       close.textContent = "×";
       close.addEventListener("click", () => history.back());
-      pushView.appendChild(close);
+      // A link out of the viewer (the photo's album, its owner): an ordinary in-app navigation.
+      const out = document.createElement("a");
+      out.href = "/photos/";
+      out.textContent = "Photos";
+      pushView.append(close, out);
       root().appendChild(pushView);
     }, PUSH_VIEW_DELAY_MS);
   }

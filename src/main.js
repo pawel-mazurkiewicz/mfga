@@ -255,6 +255,7 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
   let haltNotice = null;
   let pushBase = null; // the Home or groups-feed route kept on screen while a push view (a photo) is open over it
   let pushGoneTicks = 0;
+  let settling = 0; // the current settleReturn() run; an older one stops
   let homeY = 0; // the window scroll in our stream the last time Home was on screen
   let lastTraversal = -Infinity; // performance.now() of the last Back/Forward
 
@@ -510,11 +511,7 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
       mountHaltNotice();
       // The push view closed without a URL change, or Facebook turned it into a page of its own.
       pushGoneTicks = pushBase && !pushViewOpen() ? pushGoneTicks + 1 : 0;
-      if (pushGoneTicks >= 2) {
-        pushBase = null;
-        pushGoneTicks = 0;
-        showRoute(classifyRoute());
-      }
+      if (pushGoneTicks >= 2) releasePushView();
     },
     { disableOnError: false },
   );
@@ -536,10 +533,14 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
     const fromFeed = base.mode === "home" || base.mode === "groups-feed";
     // A photo opened over Home or the groups feed: Facebook keeps that page mounted under its viewer, and so
     // do we, instead of tearing the page down and rebuilding it when the viewer closes.
-    if (next.mode === "page" && fromFeed && pushViewOpen()) return keepUnderPushView(base);
+    if (next.mode === "page" && fromFeed && pushViewOpen()) {
+      keepUnderPushView(base);
+      watchPushView(base);
+      return;
+    }
     pushBase = null;
     showRoute(next, { restore: performance.now() - lastTraversal < TRAVERSAL_MS });
-    if (next.mode === "page" && fromFeed) watchForPushView(base);
+    if (next.mode === "page" && fromFeed) watchPushView(base);
   }
 
   /** Lays the page out for `next`: the URL's route, or the one kept under a push view. */
@@ -565,11 +566,28 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
     if (relayout) showRoute(base, { restore: true });
   }
 
-  function watchForPushView(base) {
+  function releasePushView() {
+    pushBase = null;
+    pushGoneTicks = 0;
+    showRoute(classifyRoute());
+  }
+
+  /**
+   * After a route change that started on Home or the groups feed: a viewer that shows up late keeps that
+   * page on screen; one gone at two checks in a row (the viewer led somewhere else) hands over to the URL.
+   */
+  function watchPushView(base) {
     const key = routeKey();
+    let gone = 0;
     for (const ms of PUSH_VIEW_CHECKS_MS) {
       setTimeout(() => {
-        if (!pushBase && routeKey() === key && pushViewOpen()) keepUnderPushView(base);
+        if (routeKey() !== key) return;
+        if (!pushBase) {
+          if (route.mode === "page" && pushViewOpen()) keepUnderPushView(base);
+          return;
+        }
+        gone = pushViewOpen() ? 0 : gone + 1;
+        if (gone >= 2) releasePushView();
       }, ms);
     }
   }
@@ -580,6 +598,7 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
    * Any input from the reader ends this.
    */
   function settleReturn(y) {
+    const run = ++settling;
     const until = performance.now() + RETURN_SETTLE_MS;
     const inputs = ["wheel", "touchstart", "keydown", "mousedown"];
     let stopped = false;
@@ -588,7 +607,7 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
     };
     for (const type of inputs) addEventListener(type, stop, { capture: true, passive: true });
     const step = () => {
-      if (stopped || route.mode !== "home" || performance.now() > until) {
+      if (stopped || run !== settling || route.mode !== "home" || performance.now() > until) {
         for (const type of inputs) removeEventListener(type, stop, true);
         return;
       }

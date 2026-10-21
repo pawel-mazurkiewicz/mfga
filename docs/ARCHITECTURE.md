@@ -102,7 +102,9 @@ ui/stream/*     Story → 2010 DOM; actions via data/actions.js (react, comment,
 | Friends / Groups / Pages / Favorites (left nav) | one source | as above, single connection |
 
 Variables are the page's own SSR preloader variables with only `feedStyle`, `orderby`, `feedEndCursor`,
-`refreshMode:"COLD_START"` and `scale` (raised to ≥2 for crisp 50px avatars) overridden. Page 1 of the
+`refreshMode:"COLD_START"` and `scale` (raised to ≥2 for crisp 50px avatars) overridden. The stored copy
+(`src/data/ops.js`, used when a later page has no preloader) keeps the variables as Facebook sent them,
+`feedClientSession` included: sending `null` instead is untested against the live site. Page 1 of the
 filter the user landed on is read straight from the SSR payload (zero requests).
 
 If no usable query descriptor exists (no preloader, nothing learned yet), or the first page of our feed

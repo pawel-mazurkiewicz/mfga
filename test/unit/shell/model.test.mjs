@@ -108,7 +108,7 @@ test("rightColModel: requests only when there are some, birthdays per name, MFGA
   const m = rightColModel({ counts: { friendRequests: 3 }, birthdays, stats: { ads: 1, suggested: 34 } });
   assert.deepEqual(m.requests, [{ icon: "rc_friend_request", count: 3, label: "friend requests", href: "https://www.facebook.com/friends/requests/" }]);
   assert.deepEqual(m.events.map((r) => r.name || r.text), ["Ana", "Bo", "Cy", "and 2 others", "Something we cannot parse."]);
-  assert.deepEqual(m.mfga.map((r) => [r.count, r.label]), [[1, "ad removed today"], [34, "suggested posts removed today"]]);
+  assert.deepEqual(m.mfga.map((r) => [r.count, r.label]), [[1, "ad removed"], [34, "suggested posts removed"]]);
   assert.deepEqual(rightColModel({ counts: { friendRequests: 0 }, birthdays: null, stats: null }).requests, []);
   assert.deepEqual(rightColModel({}).events, []);
 });
@@ -121,7 +121,7 @@ test("rightColModel plurals in Polish", () => {
   assert.equal(label(5), "zaproszeń do grona znajomych");
   assert.equal(label(22), "zaproszenia do grona znajomych");
   const ads = (n) => rightColModel({ stats: { ads: n } }).mfga[0].label;
-  assert.deepEqual([ads(1), ads(2), ads(12)], ["reklama usunięta dzisiaj", "reklamy usunięte dzisiaj", "reklam usuniętych dzisiaj"]);
+  assert.deepEqual([ads(1), ads(2), ads(12)], ["reklama usunięta", "reklamy usunięte", "reklam usuniętych"]);
 });
 
 test("chatTabModel counts online friends", () => {

@@ -9,8 +9,8 @@ import { fixtureNow } from "./helpers/site.mjs";
 
 const TIMEOUT = 120000;
 
-async function withProduct(fn) {
-  const p = await launchProduct("userscript", { now: fixtureNow() });
+async function withProduct(fn, { locale = "en" } = {}) {
+  const p = await launchProduct("userscript", { now: fixtureNow(), locale });
   const errors = [];
   p.b.context.on("page", (page) => page.on("pageerror", (e) => errors.push(e)));
   try {
@@ -73,9 +73,39 @@ describe("MFGA userscript: details", { skip: !hasUserscript() && `no build at ${
     });
   });
 
+  test("a right-column line that wraps keeps 2010's line spacing (Polish MFGA box)", { timeout: TIMEOUT }, async () => {
+    await withProduct(
+      async (p) => {
+        const page = await p.open("/");
+        await page.waitForFunction(() => document.querySelectorAll("#mfga-stream .mfga-story[data-key]").length >= 5, null, { timeout: 60000 });
+        await page.waitForTimeout(1500);
+        const rows = await page.evaluate(() =>
+          [...document.querySelectorAll("#mfga-shell .mfga-shell-right .mfga-rc-row")].map((row) => {
+            const range = document.createRange();
+            range.selectNodeContents(row);
+            const tops = [...new Set([...range.getClientRects()].filter((r) => r.width > 1).map((r) => Math.round(r.top)))].sort((a, b) => a - b);
+            return { text: row.textContent, height: row.getBoundingClientRect().height, tops };
+          }),
+        );
+        const wrapped = rows.filter((r) => r.tops.length > 1);
+        assert.ok(wrapped.length >= 1, `a wrapped row to check: ${JSON.stringify(rows.map((r) => r.text))}`);
+        for (const r of wrapped) {
+          const gaps = r.tops.slice(1).map((t, i) => t - r.tops[i]);
+          assert.ok(gaps.every((g) => g <= 15), `${r.text}: lines ${gaps.join(", ")} px apart (2010: 14)`);
+        }
+        for (const r of rows.filter((x) => x.tops.length === 1 && !/birthday|urodziny/i.test(x.text))) assert.ok(r.height <= 21, `${r.text}: one line is ${r.height}px`);
+      },
+      { locale: "pl" },
+    );
+  });
+
   test("the 2010 chat tab: on Home Facebook's New message launcher gives way; on a narrow groups feed the tab does", { timeout: TIMEOUT }, async () => {
     await withProduct(async (p) => {
-      const shown = (page, sel) => page.evaluate((s) => !!document.querySelector(s)?.getClientRects().length, sel);
+      const shown = (page, sel) =>
+        page.evaluate((s) => {
+          const el = document.querySelector(s);
+          return !!el?.getClientRects().length && getComputedStyle(el).visibility === "visible";
+        }, sel);
       const TAB = "#mfga-shell .mfga-chat-tab";
       const HEAD = '[role="button"][aria-label="New message"]';
 

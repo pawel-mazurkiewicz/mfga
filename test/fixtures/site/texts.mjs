@@ -48,7 +48,7 @@ export const TEXTS = {
   },
   pl: {
     friends: [
-      "Wreszcie skończyłem regał, który zacząłem w marcu. Zostały tylko dwie śrubki, to mój rekord.",
+      "Wreszcie skończyłam regał, który zaczęłam w marcu. Zostały tylko dwie śrubki, to mój rekord.",
       "Ma ktoś dobry przepis na ciasto ze śliwkami? Drzewo w ogrodzie w tym roku oszalało.",
       "Poranny bieg wzdłuż rzeki, 8 km przed deszczem. Nogi mówią nie, głowa mówi tak.",
       "Kolacja z {mention} dziś wieczorem. Nadal jest mi winna rewanż w szachy.",

@@ -6,17 +6,22 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { ROOT } from "../test/e2e/helpers/browser.mjs";
 import { hasUserscript, launchProduct } from "../test/e2e/helpers/product.mjs";
-import { fixtureNow } from "../test/e2e/helpers/site.mjs";
 
 const OUT = path.join(ROOT, "docs/screenshots");
 const SETTINGS_KEY = "__gm_store__:mfga:settings";
 // The size of the February 2010 capture (assets/reference/2010-home.png): those shots line up with it 1:1.
 const CAPTURE = { width: 994, height: 882 };
-const WIDE = { width: 1280, height: 820 };
+// Wide enough for the 2026 page's three columns, narrow enough that the 980px 2010 page fills most of it.
+const WIDE = { width: 1100, height: 820 };
+// The 2010 left column and News Feed (x 0-730): legible at half the README's width.
+const FEED_CLIP = { x: 0, y: 0, width: 730, height: 470 };
 
-/** One fresh browser with the userscript; `settings` are stored before the first MFGA page loads. */
+/**
+ * One fresh browser with the userscript; `settings` are stored before the first MFGA page loads. The world's
+ * `now` is the real second (not the minute), so "7 minutes ago" reads the same in every scene.
+ */
 async function session({ locale = "en", settings = null } = {}, fn) {
-  const p = await launchProduct("userscript", { now: fixtureNow(), locale });
+  const p = await launchProduct("userscript", { now: Math.floor(Date.now() / 1000), locale });
   try {
     if (settings) {
       const first = await p.open("/robots-free-page");
@@ -64,32 +69,31 @@ async function save(target, name, opts = {}) {
 }
 
 const SCENES = [
-  // The home page at the 2010 capture's size, in English and Polish.
+  // The home page at the 2010 capture's size, then the same page wide for the before/after pair: one session,
+  // so both show the same stories, times and counts.
   async () =>
     session({}, async (p) => {
       const page = await open(p, "/", CAPTURE);
       await settle(page, { stories: 8 });
       await save(page, "home");
+      await page.setViewportSize(WIDE);
+      await settle(page);
+      await save(page, "after");
     }),
+  // Polish: the 2010 left column and News Feed.
   async () =>
-    session({ locale: "pl" }, async (p) => {
+    session({ locale: "pl", settings: { look: { welcome: false } } }, async (p) => {
       const page = await open(p, "/", CAPTURE);
       await settle(page, { stories: 8 });
-      await save(page, "home-pl");
+      await save(page, "home-pl", { clip: FEED_CLIP });
     }),
-  // Before and after: the test copy of 2026 Facebook with MFGA off, then on.
+  // Before: the test copy of 2026 Facebook with MFGA off.
   async () =>
     session({ settings: { enabled: false } }, async (p) => {
       const page = await open(p, "/", WIDE);
       await page.waitForSelector("[aria-posinset]", { timeout: 30000 });
       await settle(page);
       await save(page, "before");
-    }),
-  async () =>
-    session({}, async (p) => {
-      const page = await open(p, "/", WIDE);
-      await settle(page, { stories: 8 });
-      await save(page, "after");
     }),
   // A story with its comments open, liked, and a comment being written.
   async () =>
@@ -114,26 +118,38 @@ const SCENES = [
       const box = story.getByRole("textbox").first();
       await box.click();
       await box.pressSequentially("Count me in!", { delay: 20 });
+      await page.mouse.move(0, 0); // no hover underline on a link the pointer happens to rest on
       await page.waitForTimeout(400);
-      await save(story, "story", { animations: "disabled" });
+      // The story's box with a margin, so the picture does not touch the image's edge (none below: the next
+      // story starts there).
+      await story.evaluate((el) => el.scrollIntoView({ block: "center" }));
+      const b = await story.boundingBox();
+      const PAD = 12;
+      await save(page, "story", { animations: "disabled", clip: { x: Math.max(0, b.x - PAD), y: Math.max(0, b.y - PAD), width: b.width + 2 * PAD, height: b.height + PAD } });
     }),
-  // One Feeds filter: Friends, with News Feed's filters open in the left column.
+  // One Feeds filter: Groups, with News Feed's filters open in the left column. Home first, as a reader would:
+  // the Feeds routes draw no rails, so the groups and chat in the left column come from MFGA's cache.
   async () =>
     session({ settings: { look: { welcome: false } } }, async (p) => {
-      const page = await open(p, "/?filter=friends&sk=h_chr", CAPTURE);
+      const page = await open(p, "/", CAPTURE);
       await settle(page, { stories: 6 });
-      await save(page, "filter-friends");
+      await page.waitForTimeout(1500); // the rail cache is written a second after the rails are read
+      await page.goto("https://www.facebook.com/?filter=groups&sk=h_chr");
+      await settle(page, { stories: 4 });
+      await save(page, "filter-groups", { clip: FEED_CLIP });
     }),
-  // The settings, from Account ▾ → MFGA Settings….
+  // The settings, from Account ▾ → MFGA Settings…: the dialog alone.
   async () =>
     session({}, async (p) => {
       const page = await open(p, "/", CAPTURE);
       await settle(page, { stories: 6 });
       await page.locator("#mfga-shell").getByRole("button", { name: /^Account/ }).click();
       await page.getByRole("menuitem", { name: /MFGA Settings/ }).click();
-      await page.getByRole("dialog", { name: /MFGA/ }).waitFor();
+      const dialog = page.getByRole("dialog", { name: /MFGA/ });
+      await dialog.waitFor();
+      await page.mouse.move(0, 0);
       await page.waitForTimeout(300);
-      await save(page, "settings");
+      await save(dialog, "settings");
     }),
   // Facebook-drawn pages under the 2010 bar: the groups feed (2010 posts) and a profile.
   async () =>

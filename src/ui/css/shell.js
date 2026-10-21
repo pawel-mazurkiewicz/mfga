@@ -133,13 +133,13 @@ ${S} .mfga-rc-head{display:flex;justify-content:space-between;align-items:baseli
 ${S} .mfga-rc-title{margin:0;color:#333;font-size:11px;font-weight:bold}
 ${S} .mfga-rc-action{padding:0;border:0;background:none;color:#3B5998;line-height:13px;cursor:pointer}
 ${S} .mfga-rc-action:hover{text-decoration:underline}
-${S} .mfga-rc-row{position:relative;display:block;min-height:20px;padding-left:20px;line-height:20px}
+${S} .mfga-rc-row{position:relative;display:block;min-height:14px;padding:3px 0 3px 20px;line-height:14px}
 ${S} .mfga-rc-row>.mfga-ico{position:absolute;left:0;top:4px}
-${S} .mfga-rc-event{min-height:15px;line-height:15px}
+${S} .mfga-rc-event{min-height:15px;padding-top:0;padding-bottom:0;line-height:15px}
 ${S} .mfga-rc-event>.mfga-ico{top:1px}
 ${S} .mfga-rc-event:first-child{margin-top:4px}
 ${S} .mfga-rc-when{color:#808080;font-size:9px}
-${S} .mfga-rc-text{min-height:16px;margin:3px 0 7px;line-height:13px}
+${S} .mfga-rc-text{min-height:16px;margin:3px 0 7px;padding-top:0;padding-bottom:0;line-height:13px}
 ${S} .mfga-rc-text>.mfga-ico{top:0}
 ${S} .mfga-rc-note{margin:4px 0 0;color:#808080;line-height:13px}
 `;
@@ -164,14 +164,16 @@ ${S} .mfga-chat-tab:hover{background:linear-gradient(#FFF,#E5E5E5)}
 /** The shell's CSS; it does not depend on settings (visibility toggles are applied by the shell itself). */
 /**
  * Facebook's round "New message" launcher (dom-chrome §7.4) sits in the bottom-right corner that the 2010 chat
- * tab takes, so it goes while the tab is shown; open chat windows and heads stay. Its label is known in
- * English and Polish (one in a Messenger dropdown is inside a dialog and stays).
+ * tab takes, so it goes while the tab is shown; open chat windows and heads stay. It keeps its place (hidden,
+ * not removed): the conversation heads stacked above it would otherwise drop onto the tab. Its label is known
+ * in English and Polish (one in a Messenger dropdown is inside a dialog and stays).
  */
 function chatHeadCss(settings) {
   if (settings?.look?.chat === false) return "";
   const head = ':is([aria-label="New message"],[aria-label="Nowa wiadomość"])[role="button"]:not([role="dialog"] *)';
-  return `html[data-mfga-route="home"] ${head}{display:none!important}
-@media (min-width:${GROUPS_CHAT_MIN}px){html[data-mfga-route="groups-feed"] ${head}{display:none!important}}
+  const gone = "visibility:hidden!important;pointer-events:none!important";
+  return `html[data-mfga-route="home"] ${head}{${gone}}
+@media (min-width:${GROUPS_CHAT_MIN}px){html[data-mfga-route="groups-feed"] ${head}{${gone}}}
 `;
 }
 

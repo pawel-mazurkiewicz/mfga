@@ -91,7 +91,7 @@ test("no shell source file uses innerHTML-like sinks, and every icon it names ex
 });
 
 test("Facebook's New message launcher gives way to the 2010 chat tab wherever the tab is shown", () => {
-  const rules = [...css.matchAll(/([^{}]*\[aria-label="New message"\][^{]*)\{display:none!important\}/g)].map((m) => m[1]);
+  const rules = [...css.matchAll(/([^{}]*\[aria-label="New message"\][^{]*)\{visibility:hidden!important;pointer-events:none!important\}/g)].map((m) => m[1]);
   assert.equal(rules.length, 2, "Home, and the groups feed in a wide window");
   assert.match(rules[0], /^\s*html\[data-mfga-route="home"\]/);
   assert.match(rules[1], /^html\[data-mfga-route="groups-feed"\]/);
@@ -102,6 +102,7 @@ test("Facebook's New message launcher gives way to the 2010 chat tab wherever th
     assert.match(rule, /:not\(\[role="dialog"\] \*\)/, "the Messenger dropdown's button stays");
   }
   // Below 1200px the groups feed's 680px column reaches the tab's corner: there the tab goes and the launcher stays.
+  assert.doesNotMatch(css, /New message[^{]*\{display:none/, "hidden in place: the heads above it must not drop onto the tab");
   assert.match(css, /@media \(max-width:1199\.98px\)\{html\[data-mfga-route="groups-feed"\] #mfga-shell \.mfga-chat-tab\{display:none\}\}/);
   const off = shellCss({ ...DEFAULTS, look: { ...DEFAULTS.look, chat: false } });
   assert.doesNotMatch(off, /New message/, "no tab, no reason to hide it");

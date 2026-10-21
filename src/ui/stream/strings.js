@@ -99,7 +99,7 @@ registerStrings({
     "feed.welcome.title": "Witaj ponownie na swojej starej stronie głównej.",
     "feed.welcome.close": "zamknij",
     "feed.welcome.step1": "Widzisz tylko posty znajomych, grup i stron. Reklamy i sugerowane posty są ukryte.",
-    "feed.welcome.step2": "Przełączaj Najciekawsze i Najnowsze nad listą postów; Najnowsze są od najnowszych.",
+    "feed.welcome.step2": "Przełączaj Najciekawsze i Najnowsze nad listą postów; Najnowsze pokazują najpierw najnowsze posty.",
     "feed.welcome.step3": "Wybierz, co widzisz i jak wygląda Facebook, w Ustawieniach MFGA w menu Konto powyżej.",
     "feed.welcome.step3Plain": "Wybierz, co widzisz i jak wygląda Facebook, w Ustawieniach MFGA: przycisk MFGA na pasku narzędzi albo menu menedżera skryptów.",
     "feed.welcome.learn": "Dowiedz się więcej o Make Facebook Great Again",

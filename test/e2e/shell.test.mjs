@@ -252,7 +252,7 @@ describe("2010 shell on Home", () => {
     assert.deepEqual(ui.nav, ["News Feed", "Messages (1)", "Events", "Photos", "Friends (3)"]);
     assert.equal(ui.requests, "3 friend requests");
     assert.equal(ui.birthday, "Dasha Trofimova's birthday Today");
-    assert.deepEqual(ui.mfga, ["12 ads removed today", "34 suggested posts removed today"]);
+    assert.deepEqual(ui.mfga, ["12 ads removed", "34 suggested posts removed"]);
     assert.equal(ui.groups, 4, "3 groups + 1 Page with their 16px pictures");
     assert.equal(ui.chat, "Chat (4)", "Meta AI is not a friend");
     assert.deepEqual(ui.online, ["Petronella O'Negriezz", "Tom Hellier", "Ágnes Fülöp", "Ash Bainbridge"]);
@@ -492,8 +492,16 @@ describe("2010 shell on Home", () => {
     assert.match(await hitOwner(page, menu.x, menu.y), /^fb:/);
     await page.evaluate(() => document.getElementById("fx-account").click());
 
-    const chat = await rect(page, '[aria-label="New message"]');
-    assert.equal(await hitOwner(page, chat.left + 24, chat.top + 24 - (await page.evaluate(() => scrollY))), "fb:button");
+    // Facebook's docked chat stays usable above the shell; only its New message launcher gives way to the 2010
+    // chat tab, and keeps its place so the conversation heads above it stay clear of the tab.
+    const scroll = await page.evaluate(() => scrollY);
+    const head = await rect(page, '[aria-label^="Open chat with"]');
+    assert.equal(await hitOwner(page, head.left + 24, head.top + 24 - scroll), "fb:button");
+    const launcher = await rect(page, '[aria-label="New message"]');
+    assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('[aria-label="New message"]')).visibility), "hidden");
+    assert.notEqual(await hitOwner(page, launcher.left + 24, launcher.top + 24 - scroll), "fb:button");
+    const tab = await rect(page, ".mfga-chat-tab");
+    assert.ok(head.top + head.height <= tab.top, `the head stays above the 2010 tab: ${JSON.stringify({ head, tab })}`);
   });
 });
 

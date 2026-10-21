@@ -51,7 +51,7 @@ const FRIENDS = [
 ];
 const MEMBERS = [
   ["Victor Hale", "Victor"],
-  ["Nadia Petrova", "Nadia"],
+  ["Nadia Petrenko", "Nadia"],
   ["Ingrid Solberg", "Ingrid"],
   ["Kofi Mensah", "Kofi"],
   ["Elena Rossi", "Elena"],

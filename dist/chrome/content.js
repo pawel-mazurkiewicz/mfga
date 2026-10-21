@@ -1289,13 +1289,13 @@ ${S2} .mfga-rc-head{display:flex;justify-content:space-between;align-items:basel
 ${S2} .mfga-rc-title{margin:0;color:#333;font-size:11px;font-weight:bold}
 ${S2} .mfga-rc-action{padding:0;border:0;background:none;color:#3B5998;line-height:13px;cursor:pointer}
 ${S2} .mfga-rc-action:hover{text-decoration:underline}
-${S2} .mfga-rc-row{position:relative;display:block;min-height:20px;padding-left:20px;line-height:20px}
+${S2} .mfga-rc-row{position:relative;display:block;min-height:14px;padding:3px 0 3px 20px;line-height:14px}
 ${S2} .mfga-rc-row>.mfga-ico{position:absolute;left:0;top:4px}
-${S2} .mfga-rc-event{min-height:15px;line-height:15px}
+${S2} .mfga-rc-event{min-height:15px;padding-top:0;padding-bottom:0;line-height:15px}
 ${S2} .mfga-rc-event>.mfga-ico{top:1px}
 ${S2} .mfga-rc-event:first-child{margin-top:4px}
 ${S2} .mfga-rc-when{color:#808080;font-size:9px}
-${S2} .mfga-rc-text{min-height:16px;margin:3px 0 7px;line-height:13px}
+${S2} .mfga-rc-text{min-height:16px;margin:3px 0 7px;padding-top:0;padding-bottom:0;line-height:13px}
 ${S2} .mfga-rc-text>.mfga-ico{top:0}
 ${S2} .mfga-rc-note{margin:4px 0 0;color:#808080;line-height:13px}
 `;
@@ -1318,8 +1318,9 @@ ${S2} .mfga-chat-tab:hover{background:linear-gradient(#FFF,#E5E5E5)}
   function chatHeadCss(settings) {
     if (settings?.look?.chat === false) return "";
     const head = ':is([aria-label="New message"],[aria-label="Nowa wiadomość"])[role="button"]:not([role="dialog"] *)';
-    return `html[data-mfga-route="home"] ${head}{display:none!important}
-@media (min-width:${GROUPS_CHAT_MIN}px){html[data-mfga-route="groups-feed"] ${head}{display:none!important}}
+    const gone = "visibility:hidden!important;pointer-events:none!important";
+    return `html[data-mfga-route="home"] ${head}{${gone}}
+@media (min-width:${GROUPS_CHAT_MIN}px){html[data-mfga-route="groups-feed"] ${head}{${gone}}}
 `;
   }
   function shellCss(settings) {
@@ -5598,10 +5599,10 @@ ${docId}`;
       "rc.mobileLink": "mobile phone",
       "rc.mfga": "MFGA",
       "rc.mfgaSettings": "Settings",
-      "rc.adsRemoved.one": "ad removed today",
-      "rc.adsRemoved.other": "ads removed today",
-      "rc.suggestedRemoved.one": "suggested post removed today",
-      "rc.suggestedRemoved.other": "suggested posts removed today",
+      "rc.adsRemoved.one": "ad removed",
+      "rc.adsRemoved.other": "ads removed",
+      "rc.suggestedRemoved.one": "suggested post removed",
+      "rc.suggestedRemoved.other": "suggested posts removed",
       "rc.mfgaNote": "Your News Feed shows only your friends, groups and pages.",
       "chat.online": "Chat ({n})",
       "chat.offline": "Chat (Offline)",
@@ -5669,12 +5670,12 @@ ${docId}`;
       "rc.mobileLink": "telefonie komórkowym",
       "rc.mfga": "MFGA",
       "rc.mfgaSettings": "Ustawienia",
-      "rc.adsRemoved.one": "reklama usunięta dzisiaj",
-      "rc.adsRemoved.few": "reklamy usunięte dzisiaj",
-      "rc.adsRemoved.many": "reklam usuniętych dzisiaj",
-      "rc.suggestedRemoved.one": "proponowany post usunięty dzisiaj",
-      "rc.suggestedRemoved.few": "proponowane posty usunięte dzisiaj",
-      "rc.suggestedRemoved.many": "proponowanych postów usuniętych dzisiaj",
+      "rc.adsRemoved.one": "reklama usunięta",
+      "rc.adsRemoved.few": "reklamy usunięte",
+      "rc.adsRemoved.many": "reklam usuniętych",
+      "rc.suggestedRemoved.one": "proponowany post usunięty",
+      "rc.suggestedRemoved.few": "proponowane posty usunięte",
+      "rc.suggestedRemoved.many": "proponowanych postów usuniętych",
       "rc.mfgaNote": "Twoje Aktualności pokazują tylko znajomych, grupy i strony.",
       "chat.online": "Czat ({n})",
       "chat.offline": "Czat (offline)",
@@ -6282,7 +6283,7 @@ ${docId}`;
       "feed.welcome.title": "Witaj ponownie na swojej starej stronie głównej.",
       "feed.welcome.close": "zamknij",
       "feed.welcome.step1": "Widzisz tylko posty znajomych, grup i stron. Reklamy i sugerowane posty są ukryte.",
-      "feed.welcome.step2": "Przełączaj Najciekawsze i Najnowsze nad listą postów; Najnowsze są od najnowszych.",
+      "feed.welcome.step2": "Przełączaj Najciekawsze i Najnowsze nad listą postów; Najnowsze pokazują najpierw najnowsze posty.",
       "feed.welcome.step3": "Wybierz, co widzisz i jak wygląda Facebook, w Ustawieniach MFGA w menu Konto powyżej.",
       "feed.welcome.step3Plain": "Wybierz, co widzisz i jak wygląda Facebook, w Ustawieniach MFGA: przycisk MFGA na pasku narzędzi albo menu menedżera skryptów.",
       "feed.welcome.learn": "Dowiedz się więcej o Make Facebook Great Again",

@@ -34,12 +34,14 @@ const SECTION_TITLES = { friends: "Friends", groups: "Groups", watch: "Video", r
 export const fixtureNow = () => Math.floor(Date.now() / 60000) * 60;
 
 /**
- * Which fixture page answers a www.facebook.com URL: { kind, opts } | { redirect } | null (not a page).
+ * Which fixture page answers a www.facebook.com URL: { kind, opts } | { redirect } | { notFound } |
+ * null (not a document: left to other routes).
  */
 export function pageFor(url, world) {
   const u = new URL(url);
   const p = u.pathname;
   if (/^\/(api|ajax)\//.test(p)) return null;
+  if (/\.(ico|png|jpg|gif|svg|js|css|json|txt|xml)$/i.test(p)) return { notFound: true };
   if (p === "/" || p === "/home.php") {
     const filter = u.searchParams.get("filter");
     const sk = u.searchParams.get("sk");
@@ -49,8 +51,11 @@ export function pageFor(url, world) {
   if (/^\/groups\/feed\/?$/.test(p)) return { kind: "groups-feed", opts: {} };
   if (p.startsWith("/checkpoint/")) return { kind: "checkpoint", opts: {} };
   if (/^\/me\/?$/.test(p)) return { redirect: world.viewer.url };
+  const people = [world.viewer, ...world.friends];
+  const byId = p === "/profile.php" && people.find((person) => person.id === u.searchParams.get("id"));
+  if (byId) return { kind: "profile", opts: { vanity: byId.vanity } };
   const segments = p.split("/").filter(Boolean);
-  if (segments.length === 1 && [world.viewer, ...world.friends].some((person) => person.vanity === segments[0])) return { kind: "profile", opts: { vanity: segments[0] } };
+  if (segments.length === 1 && people.some((person) => person.vanity === segments[0])) return { kind: "profile", opts: { vanity: segments[0] } };
   const section = SECTION_TITLES[segments[0]] || (segments[0] ? segments[0][0].toUpperCase() + segments[0].slice(1) : "Facebook");
   return { kind: "page", opts: { title: section, activeTab: ["friends", "groups", "marketplace"].includes(segments[0]) ? segments[0] : null } };
 }
@@ -107,6 +112,7 @@ export async function installSite(b, { locale = "en", now, fetchSize = 4, delayM
     (u, request) => u.hostname === "www.facebook.com" && request.method() === "GET" && pageFor(u.href, world) !== null,
     (route, request) => {
       const target = pageFor(request.url(), world);
+      if (target.notFound) return route.fulfill({ status: 404, body: "" });
       documents.push({ at: Date.now(), url: request.url(), kind: target.kind || "redirect" });
       if (target.redirect) return route.fulfill({ status: 302, headers: { location: target.redirect } });
       return route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: render(target.kind, target.opts).html });

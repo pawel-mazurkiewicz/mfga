@@ -50,16 +50,22 @@ export function openDialog({ title, body, buttons = [], width = 465, note = null
   const id = `mfga-dialog-${++seq}`;
   const opener = document.activeElement;
   let closed = false;
-  const handle = {
-    close() {
-      if (closed) return;
-      closed = true;
-      stack.splice(stack.indexOf(handle), 1);
-      document.removeEventListener("focusin", onFocusIn, true);
-      layer.remove();
-      if (opener && opener.isConnected && opener !== document.body) opener.focus({ preventScroll: true });
-      if (onClose) safe("dialog", onClose, { disableOnError: false })();
-    },
+  const dispose = (restoreFocus) => {
+    if (closed) return;
+    closed = true;
+    stack.splice(stack.indexOf(handle), 1);
+    document.removeEventListener("focusin", onFocusIn, true);
+    document.removeEventListener("keydown", onStrayKeyDown, true);
+    layer.remove();
+    if (restoreFocus && opener && opener.isConnected && opener !== document.body) opener.focus({ preventScroll: true });
+    if (onClose) safe("dialog", onClose, { disableOnError: false })();
+  };
+  const handle = { close: () => dispose(true) };
+  // Someone else took the layer off the page: stop holding focus and keys, and leave focus where it went.
+  const detached = () => {
+    if (layer.isConnected) return false;
+    dispose(false);
+    return true;
   };
   const isTop = () => stack[stack.length - 1] === handle;
   const footerButtons = (buttons?.length ? buttons : [{ label: t("dialog.close") }]).map((b) => renderButton(b, handle));
@@ -89,7 +95,15 @@ export function openDialog({ title, body, buttons = [], width = 465, note = null
   }
 
   function onFocusIn(ev) {
+    if (detached()) return;
     if (isTop() && !dialog.contains(ev.target)) focusFirst(dialog);
+  }
+
+  // Focus falls back to <body> when the focused control is removed (a re-rendered status line, say); Esc and
+  // Tab still belong to the top-most dialog then. A lower dialog's handler runs first and leaves the key alone.
+  function onStrayKeyDown(ev) {
+    if (ev.defaultPrevented || (ev.target !== document.body && ev.target !== document.documentElement)) return;
+    if (!detached()) onKeyDown(ev);
   }
 
   // Clicking the overlay closes the dialog; mousedown on it must not move focus out of the dialog.
@@ -108,6 +122,7 @@ export function openDialog({ title, body, buttons = [], width = 465, note = null
   stack.push(handle);
   document.body.appendChild(layer);
   document.addEventListener("focusin", onFocusIn, true);
+  document.addEventListener("keydown", onStrayKeyDown, true);
   if (focus && dialog.contains(focus)) focus.focus({ preventScroll: true });
   else focusFirst(dialog);
   return handle;

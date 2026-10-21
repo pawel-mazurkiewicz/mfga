@@ -143,6 +143,8 @@ describe("SSR frames", () => {
     assert.equal(pageFor(`https://www.facebook.com/${w.friends[2].vanity}`, w).kind, "profile");
     assert.equal(pageFor("https://www.facebook.com/me/", w).redirect, w.viewer.url);
     assert.equal(pageFor("https://www.facebook.com/messages/t/1/", w).kind, "page");
+    assert.equal(pageFor(`https://www.facebook.com/profile.php?id=${w.friends[1].id}`, w).opts.vanity, w.friends[1].vanity);
+    assert.deepEqual(pageFor("https://www.facebook.com/favicon.ico", w), { notFound: true });
     assert.equal(pageFor("https://www.facebook.com/api/graphql/", w), null);
   });
 });
@@ -381,7 +383,7 @@ describe("in Chromium", () => {
       feedHeading: [...document.querySelectorAll('[role="main"] h3')].some((h) => h.textContent === "Feed posts"),
       posts: document.querySelectorAll('[role="main"] [aria-posinset]').length,
       skeleton: !!document.querySelector('[aria-posinset] [role="progressbar"]'),
-      rail: [...document.querySelectorAll('[role="complementary"] h3')].map((h) => h.textContent.replace(/​/g, "")),
+      rail: [...document.querySelectorAll('[role="complementary"] h3')].map((h) => h.textContent.replace(/\u200b/g, "")),
       contacts: document.querySelectorAll('[role="complementary"] a[href^="/messages/t/"]').length,
       cookie: document.cookie.includes("c_user="),
       header: getComputedStyle(document.documentElement).getPropertyValue("--header-height").trim(),

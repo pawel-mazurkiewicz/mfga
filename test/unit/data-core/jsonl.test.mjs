@@ -127,6 +127,45 @@ describe("stitch", () => {
     assert.deepEqual(r.data, { a: { b: { c: 1 } } });
   });
 
+  test("existing containers are never replaced, whatever kind the next path key suggests", () => {
+    const r = stitch([
+      { data: { viewer: { news_feed: { edges: [{ cursor: "c0" }] } }, meta: { a: 1 } } },
+      { label: "x$stream$y", path: ["viewer", "news_feed", "edges", "1"], data: { cursor: "c1" } },
+      { label: "x$defer$y", path: ["meta", 0], data: { b: 2 } },
+    ]);
+    assert.deepEqual(r.data.viewer.news_feed.edges, [{ cursor: "c0" }, { cursor: "c1" }], "a string index does not wipe the list");
+    assert.deepEqual(r.data.meta, { a: 1, 0: { b: 2 } }, "a numeric key does not wipe the object");
+  });
+
+  test("a payload whose path cannot be applied is skipped; the rest of the response survives", () => {
+    const r = stitch([
+      { data: { viewer: { news_feed: { edges: [{ cursor: "c0" }] } } } },
+      { label: "x$defer$y", path: ["viewer", "news_feed", "edges", "length"], data: { bad: 1 } },
+      { label: "x$defer$y", path: ["viewer", "news_feed", "edges", "length", "x"], data: { bad: 2 } },
+      { label: STREAM_LABEL, path: ["viewer", "news_feed", "edges", 1], data: { cursor: "c1" }, extensions: { is_final: true } },
+    ]);
+    assert.deepEqual(feedEdges(r.data), [{ cursor: "c0" }, { cursor: "c1" }]);
+    assert.equal(r.final, true);
+  });
+
+  test("a __proto__ key in data or path never reaches Object.prototype", () => {
+    const lines = parseLines(
+      [
+        '{"data":{"__proto__":{"pollutedRoot":1},"viewer":{"__proto__":{"pollutedNested":1}}}}',
+        '{"label":"x$defer$y","path":["viewer"],"data":{"__proto__":{"pollutedDefer":1}}}',
+        '{"label":"x$defer$y","path":["__proto__"],"data":{"pollutedPath":1}}',
+        '{"label":"x$defer$y","path":["viewer","__proto__","x"],"data":{"pollutedDeepPath":1}}',
+      ].join("\n"),
+    );
+    const r = stitch(lines);
+    for (const key of ["pollutedRoot", "pollutedNested", "pollutedDefer", "pollutedPath", "pollutedDeepPath"]) assert.equal(key in {}, false, key);
+    assert.equal(Object.getPrototypeOf(r.data), Object.prototype);
+    assert.equal(Object.getPrototypeOf(r.data.viewer), Object.prototype);
+    const target = { a: 1 };
+    deepMerge(target, JSON.parse('{"__proto__":{"pollutedMerge":1},"b":2}'));
+    assert.deepEqual([target, "pollutedMerge" in {}, Object.getPrototypeOf(target)], [{ a: 1, b: 2 }, false, Object.prototype]);
+  });
+
   test("an incremental payload with an empty path merges into the root", () => {
     const r = stitch([{ data: { a: 1 } }, { label: "x$defer$root", path: [], data: { b: 2 } }]);
     assert.deepEqual(r.data, { a: 1, b: 2 });

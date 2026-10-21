@@ -71,6 +71,17 @@ describe("drop reasons", () => {
     assert.equal(await reasonOf(buildEdge({ ...story(), sponsored_data: null })), "keep");
   });
 
+  test("sponsored-data: an aliased sponsored_data (th_dat_spo, daspo_sto) set without a typename", async () => {
+    // Real 2026-10 ad shape: only the top-level copy carries __typename "SponsoredData"; with it missing (or
+    // obfuscated and no Env table) the alias being non-null is the signal. Organic stories send null.
+    for (const key of ["th_dat_spo", "daspo_sto"]) {
+      const s = story();
+      s[key] = { ad_id: "6012", lbl_adv_iden: "6012", client_token: "fxct" };
+      assert.equal(await reasonOf(buildEdge(s)), "sponsored-data", key);
+    }
+    assert.equal(await reasonOf(buildEdge({ ...story(), th_dat_spo: null, daspo_sto: null })), "keep");
+  });
+
   test("sponsored-data wins over the category (decision order)", async () => {
     assert.equal(await reasonOf(buildEdge(STORIES.sponsoredThDatSpo(), { enc: CATEGORY.SPONSORED })), "sponsored-data");
   });
@@ -195,6 +206,14 @@ describe("keep paths", () => {
     assert.equal((await verdict(edge)).category, null);
   });
 
+  test("an empty plain category counts as no category, like an empty cat", async () => {
+    const edge = buildEdge(story(), { plainCategory: "ORGANIC" });
+    edge.category = "";
+    assert.deepEqual(await verdict(edge), { keep: true, reason: "keep", category: null });
+    edge.cat_sensitive = { enc: categoryHash("9200000001", CATEGORY.SPONSORED), cat: null };
+    assert.equal(await reasonOf(edge), "category:SPONSORED", "falls through to cat_sensitive");
+  });
+
   test("decode outcomes are counted for the health panel", async () => {
     const decoded = health.counters["classify.enc.decoded"] ?? 0;
     const undecodable = health.counters["classify.enc.undecodable"] ?? 0;
@@ -291,6 +310,12 @@ describe("sha256Hex injection and failure", () => {
     const v = await createClassifier({ sha256Hex: fake }).classify(buildEdge(story(), { enc: CATEGORY.SPONSORED }));
     assert.equal(v.reason, "category:SPONSORED");
     assert.deepEqual(calls, ["9200000001", sha256Hex("9200000001") + "5"], "seed, then SPONSORED tried first");
+  });
+
+  test("an injected hash function returning uppercase hex still decodes (seed included)", async () => {
+    const upper = async (s) => sha256Hex(s).toUpperCase();
+    const v = await createClassifier({ sha256Hex: upper }).classify(buildEdge(story(), { enc: CATEGORY.SPONSORED }));
+    assert.equal(v.reason, "category:SPONSORED");
   });
 
   test("a hash function that fails leaves the edge UNDECODABLE and kept", async () => {

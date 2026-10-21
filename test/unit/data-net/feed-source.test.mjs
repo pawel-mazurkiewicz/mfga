@@ -229,3 +229,57 @@ test("next() waits for the harvest's DOMContentLoaded sweep", async () => {
   ready();
   assert.equal((await pending).stories.length, 2);
 });
+
+test("a news_feed nulled by an error fails the page instead of ending the feed", async () => {
+  const nulled = { data: { viewer: { news_feed: null } }, errors: [{ message: "A server error occurred", code: 1675030, severity: "CRITICAL", path: ["viewer", "news_feed"] }] };
+  const { src, client } = source("friends", { pages: [nulled, { data: { viewer: null }, errors: [] }, page([edge(1, 5)], "C2")] });
+  await assert.rejects(src.next(), { kind: "server", code: 1675030 });
+  assert.equal(src.done, false);
+  await assert.rejects(src.next(), { kind: "server", message: "response without news_feed" });
+  assert.deepEqual((await src.next()).stories.map((s) => s.postId), ["1"]);
+  assert.deepEqual(client.calls.map((c) => c.variables.feedEndCursor), [null, null, null], "the failed page is asked for again");
+  assert.equal(src.done, false);
+});
+
+test("overlapping next() calls read consecutive pages, one at a time", async () => {
+  const pages = [page([edge(1, 50)], "C1"), page([edge(2, 40)], "C2")];
+  const client = fakeClient(async (op, docId, variables, i) => {
+    await new Promise((r) => setTimeout(r, 5));
+    return pages[i];
+  });
+  const ops = fakeOps({ [FEED]: [{ docId: "28136951115834703", variables: TEMPLATE, source: "preloader", fresh: true }] });
+  const src = createFeedSource({ name: "friends", client, ops, harvest: fakeHarvest(), classifier: createClassifier(), extract: extractStory, codec });
+  const [a, b] = await Promise.all([src.next(), src.next()]);
+  assert.deepEqual([...a.stories, ...b.stories].map((s) => s.postId), ["1", "2"]);
+  assert.deepEqual(client.calls.map((c) => c.variables.feedEndCursor), [null, "C1"]);
+  assert.equal(src.done, false, "not mistaken for a repeated cursor");
+});
+
+test("reset() during a request: the late page does not move the new connection's cursor", async () => {
+  let release;
+  const pages = [page([edge(1, 50)], "OLD2"), page([edge(1, 50)], "NEW2")];
+  const client = fakeClient(async (op, docId, variables, i) => {
+    if (i === 0) await new Promise((r) => (release = r));
+    return pages[i];
+  });
+  const ops = fakeOps({ [FEED]: [{ docId: "28136951115834703", variables: TEMPLATE, source: "preloader", fresh: true }] });
+  const src = createFeedSource({ name: "friends", client, ops, harvest: fakeHarvest(), classifier: createClassifier(), extract: extractStory, codec });
+  const late = src.next();
+  await new Promise((r) => setTimeout(r, 5));
+  src.reset();
+  release();
+  await late;
+  await src.next();
+  assert.deepEqual(client.calls.map((c) => c.variables.feedEndCursor), [null, null], "the new connection starts at page 1");
+});
+
+test("the SSR page is skipped when the preloader's orderby makes it another connection", async () => {
+  const harvest = homeHarvest();
+  const pre = harvest.preloaders.get(FEED);
+  pre.variables = { ...pre.variables, feedStyle: "FAVORITES_FEED", orderby: [] }; // legacy /?sk=favorites
+  const { src, client } = source("favorites", { harvest, pages: [page([edge(1, 50)], "F2")] });
+  assert.deepEqual((await src.next()).stories.map((s) => s.postId), ["1"]);
+  assert.equal(client.calls.length, 1);
+  assert.equal(client.calls[0].variables.feedEndCursor, null);
+  assert.deepEqual(client.calls[0].variables.orderby, ["MOST_RECENT"]);
+});

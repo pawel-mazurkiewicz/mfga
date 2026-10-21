@@ -37,6 +37,7 @@ const platform = {
   page: {
     requireOp: (name, timeoutMs = 3000) => bridge.call("requireOp", { name, timeoutMs }, timeoutMs + 1000).catch(() => null),
     navigate: (url) => bridge.call("navigate", { url }, 2000).then(Boolean, () => false),
+    readTokens: () => bridge.call("readTokens", {}, 3000).catch(() => ({ dtsg: null, lsd: null })),
   },
   addMenuCommand(_label, fn) {
     api.runtime.onMessage.addListener((msg) => {

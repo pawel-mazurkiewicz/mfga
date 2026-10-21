@@ -2,11 +2,12 @@
 // Each test gets a fresh browser, so settings (e.g. the feed mode) never leak between tests. Tests skip until
 // `npm run build` has produced the target.
 //
-// What the tests rely on from other packages (CONTRACTS.md): #mfga-shell (layout), #mfga-stream as a child
-// of [role=main], stories as `.mfga-story[data-key=<post id>]` (shared originals are not `.mfga-story`),
-// html[data-mfga-route], the "Older Posts" / "Top News" / "Like" / "Unlike" / "Comment" controls as buttons
-// (by accessible name), a <textarea> comment box submitting on Enter, cleaned native units marked by
-// [data-mfga-hide] + CSS, and the rail cache that survives into ?filter= routes.
+// What the tests rely on from other packages (CONTRACTS.md): #mfga-shell (layout), #mfga-stream inside
+// [role=main], stories as `.mfga-story[data-key=<post id>]` (shared originals are not `.mfga-story`),
+// html[data-mfga-route], the "Older Posts" / "Top News" / "Like" / "Unlike" / "Comment" / "What's on your
+// mind?" controls as buttons (by accessible name), a <textarea> comment box submitting on Enter, group
+// shortcuts in #mfga-shell as clickable names, native junk hidden by CSS ([data-mfga-hide]), and the rail
+// cache that survives into ?filter= routes.
 
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
@@ -49,6 +50,16 @@ function hiddenIn(page, selector) {
     }),
   );
 }
+
+/** The 2010 shell is on screen: its host may be zero-sized, so look for rendered parts inside it. */
+const shellShown = (page) =>
+  page.$eval("#mfga-shell", (host) =>
+    [...host.querySelectorAll("*")].some((el) => {
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      return r.width * r.height > 2000 && cs.visibility === "visible" && cs.opacity !== "0";
+    }),
+  );
 
 const isPrefix = (keys, expected) => keys.length > 0 && keys.every((k, i) => k === expected[i]);
 
@@ -101,7 +112,7 @@ for (const [target, available, distPath] of TARGETS) {
     test("home: 2010 shell, Facebook chrome hidden, clean combined feed from all four sources", { timeout: TIMEOUT }, async () => {
       await withProduct(target, {}, async ({ site, open }) => {
         const page = await open("/");
-        await page.waitForSelector("#mfga-shell", { timeout: 30000 });
+        await page.waitForSelector("#mfga-shell", { state: "attached", timeout: 30000 });
         const keys = await waitForStories(page, 10);
         const { world, mock } = site;
 
@@ -110,7 +121,7 @@ for (const [target, available, distPath] of TARGETS) {
         for (const sel of ['[role="banner"] a[aria-label="Facebook"]', '[role="banner"] input[type="search"]', '[role="navigation"][aria-label="Shortcuts"]', '[role="complementary"]', '[role="region"][aria-label="Create a post"]', '[data-focus-target="stories_tray"]']) {
           assert.ok((await hiddenIn(page, sel)).every(Boolean), `${sel} is hidden`);
         }
-        assert.ok((await hiddenIn(page, "#mfga-shell")).every((h) => !h), "the 2010 shell is visible");
+        assert.ok(await shellShown(page), "the 2010 shell is visible");
 
         assertCleanChronological(keys, world);
         assert.ok(isPrefix(keys, world.expectedMerged()), `stream is the newest part of the merged feed:\n${keys.join(",")}\n${world.expectedMerged().slice(0, keys.length).join(",")}`);
@@ -192,15 +203,15 @@ for (const [target, available, distPath] of TARGETS) {
     test("Top News shows Facebook's ranking, cleaned", { timeout: TIMEOUT }, async () => {
       await withProduct(target, {}, async ({ site, open }) => {
         const page = await open("/");
-        await waitForStories(page, 5);
+        await waitForStories(page, 10);
         const from = site.mock.feedRequests().length;
         const top = site.world.feed("top");
         await page.locator("#mfga-stream").getByRole("button", { name: "Top News" }).click();
         await page.waitForFunction((first) => document.querySelector("#mfga-stream .mfga-story[data-key]")?.dataset.key === first, top[0], { timeout: 60000 });
         const keys = await waitForStories(page, 4);
         assert.ok(isPrefix(keys, top), `Top News keeps Facebook's order:\n${keys.join(",")}\n${top.slice(0, keys.length).join(",")}`);
-        const topRequests = site.mock.feedRequests().slice(from);
-        assert.ok(topRequests.length >= 1 && topRequests.every((e) => e.feedStyle === "DEFAULT" && e.variables.orderby.join() === "TOP_STORIES"));
+        // Page 1 of DEFAULT may come from the home page's own SSR prefetch; every request made is for Top News.
+        assert.ok(site.mock.feedRequests().slice(from).every((e) => e.feedStyle === "DEFAULT" && e.variables.orderby.join() === "TOP_STORIES"));
         await assertNoJunkText(page, site.world);
         assertPoliteTraffic(site.mock);
         assertNoPageErrors(page);
@@ -219,7 +230,7 @@ for (const [target, available, distPath] of TARGETS) {
         const from = mock.log.length;
         await page.goto(site.url("/?filter=friends&sk=h_chr"), { waitUntil: "domcontentloaded" });
         assert.equal(await page.$('[role="navigation"][aria-label="Shortcuts"]'), null, "Facebook renders no Shortcuts rail here");
-        await page.waitForSelector("#mfga-shell");
+        await page.waitForSelector("#mfga-shell", { state: "attached" });
         const keys = await waitForStories(page, 3);
         const shell = await page.$eval("#mfga-shell", (el) => el.textContent);
         assert.ok(shell.includes(group), "group shortcuts come from the rail cache");
@@ -259,7 +270,7 @@ for (const [target, available, distPath] of TARGETS) {
           }
         }
         assert.ok(checkedJunk >= 1, "at least one junk unit was far enough from the bottom to be judged");
-        assert.ok((await hiddenIn(page, "#mfga-shell")).every((h) => !h), "2010 header and left nav are shown");
+        assert.ok(await shellShown(page), "2010 header and left nav are shown");
         assert.equal(site.mock.feedRequests().length, 0, "the groups feed is Facebook's own, cleaned natively");
         assertNoPageErrors(page);
         await shot(page, target, "groups-feed");
@@ -283,13 +294,47 @@ for (const [target, available, distPath] of TARGETS) {
     test("a profile page gets the 2010 header over Facebook's own page", { timeout: TIMEOUT }, async () => {
       await withProduct(target, {}, async ({ site, open }) => {
         const page = await open(`/${site.world.friends[0].vanity}`);
-        await page.waitForSelector("#mfga-shell", { timeout: 30000 });
+        await page.waitForSelector("#mfga-shell", { state: "attached", timeout: 30000 });
         assert.equal(await page.evaluate(() => document.documentElement.getAttribute("data-mfga-route")), "page");
         assert.ok((await hiddenIn(page, '[role="banner"] input[type="search"]')).every(Boolean), "Facebook's banner is hidden");
         assert.equal(await page.$("#mfga-stream"), null, "no MFGA stream on profiles");
         assert.equal(site.mock.feedRequests().length, 0);
         assertNoPageErrors(page);
         await shot(page, target, "profile");
+      });
+    });
+
+    test("\"What's on your mind?\" opens Facebook's own composer dialog, visible above the shell", { timeout: TIMEOUT }, async () => {
+      await withProduct(target, {}, async ({ open }) => {
+        const page = await open("/");
+        await waitForStories(page, 3);
+        await page.locator("#mfga-stream").getByRole("button", { name: "What's on your mind?" }).click();
+        const dialog = '[role="dialog"][aria-label="Create post"]';
+        await page.waitForSelector(dialog, { timeout: 10000 });
+        assert.ok((await hiddenIn(page, dialog)).every((h) => !h), "Facebook's portalled dialog is not hidden");
+        const onTop = await page.$eval(dialog, (d) => {
+          const r = d.getBoundingClientRect();
+          return d.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+        });
+        assert.ok(onTop, "the dialog is not covered by the 2010 shell");
+        assertNoPageErrors(page);
+        await shot(page, target, "composer");
+      });
+    });
+
+    test("2010 navigation reaches Facebook routes, and the stream returns on Home", { timeout: TIMEOUT }, async () => {
+      await withProduct(target, {}, async ({ site, open }) => {
+        const page = await open("/");
+        await waitForStories(page, 3);
+        const group = site.world.groups[0];
+        await page.locator("#mfga-shell").getByText(group.name, { exact: true }).first().click();
+        await page.waitForURL(group.url, { timeout: 20000 });
+        await page.waitForFunction(() => document.documentElement.getAttribute("data-mfga-route") === "page");
+        await page.goBack();
+        await page.waitForFunction(() => location.pathname === "/" && document.documentElement.getAttribute("data-mfga-route") === "home");
+        await waitForStories(page, 3);
+        assert.equal(await page.evaluate(() => document.querySelector('[role="main"]').contains(document.getElementById("mfga-stream"))), true, "#mfga-stream is back in [role=main]");
+        assertNoPageErrors(page);
       });
     });
 

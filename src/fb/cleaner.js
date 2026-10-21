@@ -7,7 +7,7 @@
 // list's own children, and nothing is hidden within 1200px of the document bottom, where Facebook's
 // load-more sentinel lives.
 
-import { safe, health, rafBatch, debounce, onBody } from "../shared/util.js";
+import { safe, health, rafBatch, onBody } from "../shared/util.js";
 import { DEFAULTS } from "../shared/settings.js";
 import { isWord, isAdLabel, bylineSegments, startsWithWord, labelKey, probeLabels } from "./labels.js";
 
@@ -369,12 +369,17 @@ export function closestUnit(el) {
   return unit;
 }
 
+/** `node` and its descendants matching `selector`. */
+const selfAndBelow = (node, selector) => [...(node.matches(selector) ? [node] : []), ...node.querySelectorAll(selector)];
+
+/** A region labelled "Stories" (any locale): the tray's wrapper (dom-chrome §5.3). */
+const isStoriesRegion = (el) => el.closest('[role="main"]') != null && isWord("stories", el.getAttribute("aria-label"));
+
 /** Stories trays in `node`, plus "Stories" regions that hold no tray (cohorts without data-focus-target). */
 function storyBlocks(node) {
-  const blocks = node.matches(STORIES_SELECTOR) ? [node] : [...node.querySelectorAll(STORIES_SELECTOR)];
-  const regions = node.matches('[role="region"][aria-label]') ? [node] : node.querySelectorAll('[role="region"][aria-label]');
-  for (const r of regions) {
-    if (isWord("stories", r.getAttribute("aria-label")) && !r.querySelector(STORIES_SELECTOR)) blocks.push(r);
+  const blocks = selfAndBelow(node, STORIES_SELECTOR);
+  for (const r of selfAndBelow(node, '[role="region"][aria-label]')) {
+    if (isStoriesRegion(r) && !r.querySelector(STORIES_SELECTOR)) blocks.push(r);
   }
   return blocks;
 }
@@ -404,6 +409,7 @@ export function startCleaner({ settings, route, onStats } = {}) {
   };
   const doc = document;
   let feedRoute = isFeedRoute(route);
+  let stopped = false;
   const cache = createLabelCache();
   const resolve = labelResolver(cache, doc);
   const states = new WeakMap(); // unit -> { hits, mount, tries, done }
@@ -413,16 +419,29 @@ export function startCleaner({ settings, route, onStats } = {}) {
   const dirtyUnits = new Set();
   const dirtyBlocks = new Set();
   const stats = { seen: 0, hidden: 0, skeletons: 0, virtualized: 0, undecodable: 0, reasons: {}, signals: {}, probe: {} };
-  const emit = debounce(() => onStats?.(snapshot()), 250);
+  let statsTimer = 0;
 
   function snapshot() {
     return { ...stats, pending: pending.size, reasons: { ...stats.reasons }, signals: { ...stats.signals }, probe: structuredClone(stats.probe) };
+  }
+
+  /** Something in the stats changed: report it within 250ms (a throttle, so a busy page cannot starve it). */
+  function touch() {
+    if (!onStats || statsTimer || stopped) return;
+    statsTimer = setTimeout(
+      safe("cleaner", () => {
+        statsTimer = 0;
+        if (!stopped) onStats(snapshot());
+      }),
+      250,
+    );
   }
 
   function once(set, el, key) {
     if (set.has(el)) return;
     set.add(el);
     stats[key]++;
+    touch();
   }
 
   function count(el, verdict) {
@@ -433,39 +452,53 @@ export function startCleaner({ settings, route, onStats } = {}) {
     const sig = `${verdict.reason}:${verdict.signal}`;
     stats.signals[sig] = (stats.signals[sig] || 0) + 1;
     health.count(`clean.${verdict.reason}`);
-    emit();
-  }
-
-  function nearBottom(el) {
-    const rect = el.getBoundingClientRect();
-    return isNearBottom(rect.bottom + window.scrollY, doc.documentElement.scrollHeight);
+    touch();
   }
 
   /**
-   * Marks `target` hidden for `verdict` (or clears it). `owner` is what the bottom guard measures and the
-   * stats count; `counts` is false for a second element hidden with the same owner.
+   * Owners of new hides that must wait because they sit within BOTTOM_GUARD_PX of the end of the page,
+   * measured in one layout pass before any write. (A unit hidden below another one passed the guard
+   * itself, so collapsing it cannot bring the one above within the guard.)
    */
-  function mark(owner, target, verdict, counts = true) {
-    if (!verdict) {
-      pending.delete(owner);
-      target?.removeAttribute(HIDE_ATTR);
-      return;
-    }
-    if (!target || target.getAttribute(HIDE_ATTR) === verdict.reason) return;
-    if (!target.hasAttribute(HIDE_ATTR) && nearBottom(owner)) {
-      pending.add(owner);
-      return;
-    }
-    pending.delete(owner);
-    target.setAttribute(HIDE_ATTR, verdict.reason);
-    if (counts) count(owner, verdict);
+  function blockedOwners(decisions) {
+    const owners = new Set(decisions.filter((d) => d.verdict && d.target && !d.target.hasAttribute(HIDE_ATTR)).map((d) => d.owner));
+    if (!owners.size) return owners;
+    const docHeight = doc.documentElement.scrollHeight;
+    const top = window.scrollY;
+    return new Set([...owners].filter((owner) => isNearBottom(owner.getBoundingClientRect().bottom + top, docHeight)));
   }
 
-  function applyUnit(unit, state) {
+  /**
+   * Writes a batch of decisions ({owner, target, verdict, counts}): marks `target` hidden for `verdict` or
+   * clears it. `owner` is what the bottom guard measures and the stats count; `counts` is false for a
+   * second element hidden with the same owner. All reads happen before the first write.
+   */
+  function commit(decisions) {
+    const blocked = blockedOwners(decisions);
+    const waiting = pending.size;
+    for (const { owner, target, verdict, counts, stale } of decisions) {
+      for (const el of stale ?? []) el.removeAttribute(HIDE_ATTR);
+      if (!verdict) {
+        pending.delete(owner);
+        target?.removeAttribute(HIDE_ATTR);
+      } else if (!target || target.getAttribute(HIDE_ATTR) === verdict.reason) {
+        continue;
+      } else if (blocked.has(owner)) {
+        pending.add(owner);
+      } else {
+        pending.delete(owner);
+        target.setAttribute(HIDE_ATTR, verdict.reason);
+        if (counts) count(owner, verdict);
+      }
+    }
+    if (pending.size !== waiting) touch();
+  }
+
+  function unitDecision(unit, state) {
     const target = unit.firstElementChild;
     // Facebook may put a node in front of the marked child: the mark always lives on the first one.
-    for (const child of unit.children) if (child !== target && child.hasAttribute(HIDE_ATTR)) child.removeAttribute(HIDE_ATTR);
-    mark(unit, target, chooseVerdict(state.hits, current(), feedRoute));
+    const stale = [...unit.children].filter((child) => child !== target && child.hasAttribute(HIDE_ATTR));
+    return { owner: unit, target, verdict: chooseVerdict(state.hits, current(), feedRoute), counts: true, stale };
   }
 
   function probe(unit) {
@@ -478,15 +511,18 @@ export function startCleaner({ settings, route, onStats } = {}) {
     entry.detected = result.detected ?? entry.detected;
     for (const f of result.mismatches) entry.mismatches[f] = (entry.mismatches[f] || 0) + 1;
     health.fact("clean.localeProbe", stats.probe);
+    touch();
   }
 
+  /** Classifies a unit if needed and returns its hide decision (or null when there is nothing to apply). */
   function processUnit(unit) {
-    if (!unit.isConnected || closestUnit(unit) !== unit || unit.closest("form")) return;
+    if (!unit.isConnected || closestUnit(unit) !== unit || unit.closest("form")) return null;
     let state = states.get(unit);
     if (!state) {
       state = { hits: null, mount: null, tries: 0, done: false };
       states.set(unit, state);
       stats.seen++;
+      touch();
     }
     const mount = mountedRoot(unit);
     if (!mount) {
@@ -496,7 +532,7 @@ export function startCleaner({ settings, route, onStats } = {}) {
       // A junk verdict sticks to the slot: after a remount its label targets may be gone.
       if (!state.hits?.length && !state.done && state.tries < MAX_TRIES) detectInto(unit, state);
     }
-    if (state.hits) applyUnit(unit, state);
+    return state.hits ? unitDecision(unit, state) : null;
   }
 
   function detectInto(unit, state) {
@@ -513,16 +549,18 @@ export function startCleaner({ settings, route, onStats } = {}) {
   }
 
   /**
-   * Top-of-feed blocks that are not units: the Stories tray (hidden with its labelled wrapper region) or,
-   * on cohorts without data-focus-target, a region labelled "Stories".
+   * Hide decisions for a top-of-feed block that is not a unit: the Stories tray (hidden with its "Stories"
+   * wrapper region, never a wider region that may hold the composer) or, on cohorts without
+   * data-focus-target, a region labelled "Stories" in the main column.
    */
   function processBlock(block) {
-    if (!block.isConnected || block.querySelector(UNIT_SELECTOR)) return;
+    if (!block.isConnected || block.querySelector(UNIT_SELECTOR)) return [];
     const verdict = chooseVerdict([{ reason: "stories", signal: "tray" }], current(), feedRoute);
-    mark(block, block, verdict);
-    if (!block.matches(STORIES_SELECTOR)) return;
+    const decisions = [{ owner: block, target: block, verdict, counts: true }];
+    if (!block.matches(STORIES_SELECTOR)) return decisions;
     const outer = block.parentElement?.closest('[role="region"]');
-    if (outer && !outer.querySelector(UNIT_SELECTOR) && outer.closest('[role="main"]')) mark(block, outer, verdict, false);
+    if (outer && isStoriesRegion(outer) && !outer.querySelector(UNIT_SELECTOR)) decisions.push({ owner: block, target: outer, verdict, counts: false });
+    return decisions;
   }
 
   function collect(node) {
@@ -532,24 +570,25 @@ export function startCleaner({ settings, route, onStats } = {}) {
     for (const b of storyBlocks(node)) dirtyBlocks.add(b);
   }
 
+  // One pass per frame: classify every dirty unit and block (reads), then measure and mark them in one batch.
   const flush = rafBatch(
     safe("cleaner", () => {
-      for (const u of dirtyUnits) processUnit(u);
-      for (const b of dirtyBlocks) processBlock(b);
+      if (stopped) return;
+      for (const owner of pending) {
+        if (!owner.isConnected) pending.delete(owner);
+        else (owner.matches(UNIT_SELECTOR) ? dirtyUnits : dirtyBlocks).add(owner);
+      }
+      const decisions = [];
+      for (const u of dirtyUnits) {
+        const d = processUnit(u);
+        if (d) decisions.push(d);
+      }
+      for (const b of dirtyBlocks) decisions.push(...processBlock(b));
       dirtyUnits.clear();
       dirtyBlocks.clear();
-      recheckPending();
-      emit();
+      commit(decisions);
     }),
   );
-
-  function recheckPending() {
-    for (const owner of [...pending]) {
-      if (!owner.isConnected) pending.delete(owner);
-      else if (owner.matches(UNIT_SELECTOR)) processUnit(owner);
-      else processBlock(owner);
-    }
-  }
 
   const observer = new MutationObserver(
     safe("cleaner", (records) => {
@@ -562,7 +601,10 @@ export function startCleaner({ settings, route, onStats } = {}) {
     }),
   );
 
-  const onScroll = rafBatch(safe("cleaner", () => pending.size && recheckPending()));
+  // Units held back by the bottom guard are tried again as the page scrolls.
+  const onScroll = () => {
+    if (pending.size) flush();
+  };
 
   function reapplyAll() {
     for (const unit of doc.querySelectorAll(UNIT_SELECTOR)) dirtyUnits.add(unit);
@@ -571,7 +613,6 @@ export function startCleaner({ settings, route, onStats } = {}) {
   }
 
   const unsubscribe = typeof settings?.subscribe === "function" ? settings.subscribe(() => reapplyAll()) : null;
-  let stopped = false;
   onBody(
     safe("cleaner", () => {
       if (stopped) return;
@@ -591,8 +632,11 @@ export function startCleaner({ settings, route, onStats } = {}) {
       stopped = true;
       observer.disconnect();
       window.removeEventListener("scroll", onScroll);
+      clearTimeout(statsTimer);
       unsubscribe?.();
       pending.clear();
+      dirtyUnits.clear();
+      dirtyBlocks.clear();
       for (const el of doc.querySelectorAll(`[${HIDE_ATTR}]`)) el.removeAttribute(HIDE_ATTR);
     },
     stats: snapshot,

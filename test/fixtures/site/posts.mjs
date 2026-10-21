@@ -36,7 +36,7 @@ function obfuscatedLabel(ctx, text) {
   const width = Math.ceil(text.length * 7.2) + 2;
   return el(
     "span",
-    raw("⁠"),
+    raw("\u2060"),
     el("span", { "aria-labelledby": labelId }, el("svg", { width, height: 16, style: "vertical-align:text-bottom;overflow:visible" }, el("use", { href: `#${useA}` }))),
     el("span", { id: labelId, style: "display:none" }, text),
     el("svg", { width: 0, height: 0, style: "position:absolute", "aria-hidden": "true" }, el("defs", el("use", { id: useA, href: `#${useB}` }), el("use", { id: useB, href: `#${textId}` }), el("text", { id: textId, x: 0, y: 12, "font-size": 13, fill: "currentColor" }, text))),

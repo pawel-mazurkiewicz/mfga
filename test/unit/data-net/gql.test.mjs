@@ -44,6 +44,7 @@ test("jazoest matches Facebook's own value for the live 2026-10-21 LSD token", (
 
 test("errorKind maps the documented codes (graphql-protocol §3.3)", () => {
   const table = {
+    1357001: "auth",
     1357004: "auth",
     1357051: "token",
     1677047: "token",
@@ -361,4 +362,55 @@ test("stats report counts and errors by kind, never tokens", async () => {
   assert.equal(stats.inFlight, false);
   assert.equal(stats.halted, false);
   assert.equal(JSON.stringify(stats).includes(harvest.tokens.dtsg), false);
+});
+
+// Facebook's async-response envelope, sent instead of GraphQL for session-level failures.
+const envelope = (fields) => `for (;;);${JSON.stringify({ __ar: 1, payload: null, ...fields })}`;
+
+test("an async-response envelope carries the error code: auth stays auth, nothing cools down", async () => {
+  for (const [code, summary] of [[1357001, "Not Logged In"], [1357004, "Sorry, something went wrong"]]) {
+    const { client, net } = setup({ reply: () => response(envelope({ error: code, errorSummary: summary, errorDescription: "Please log in to continue." })) });
+    await rejectsKind(client.request("Op", "11111", {}), "auth", code);
+    assert.equal(client.stats().cooldownMs, 0, "not mistaken for a soft block");
+    await rejectsKind(client.request("Op", "11111", {}), "auth");
+    assert.equal(net.calls.length, 2, "later requests are still sent");
+  }
+});
+
+test("an envelope token error refreshes tokens and retries once", async () => {
+  const harvest = fakeHarvest();
+  const { client, net } = setup({
+    harvest,
+    reply: (call) => response(call.form.get("fb_dtsg") === "NAcFresh:1:2" ? OK : envelope({ error: 1357051, errorSummary: "Session expired" })),
+    refreshTokens: () => (harvest.tokens.dtsg = "NAcFresh:1:2"),
+  });
+  assert.deepEqual((await client.request("Op", "11111", {})).data, { viewer: { id: "1" } });
+  assert.equal(net.calls.length, 2);
+});
+
+test("an envelope redirect to a checkpoint halts; one to the login page is auth", async () => {
+  const s1 = setup({ reply: () => response(envelope({ redirect: "https://www.facebook.com/checkpoint/1501092823525282/?next=%2F" })) });
+  await rejectsKind(s1.client.request("Op", "11111", {}), "checkpoint");
+  assert.deepEqual(s1.halts, ["checkpoint-redirect"]);
+  assert.equal(s1.client.halted, true);
+
+  const s2 = setup({ reply: () => response(envelope({ redirect: "https://www.facebook.com/login.php?next=%2F" })) });
+  await rejectsKind(s2.client.request("Op", "11111", {}), "auth");
+  assert.deepEqual(s2.halts, []);
+});
+
+test("account-warning text in an envelope halts", async () => {
+  const { client, halts } = setup({ reply: () => response(envelope({ error: 1, errorSummary: "Your account has been temporarily restricted" })) });
+  await rejectsKind(client.request("Op", "11111", {}), "checkpoint");
+  assert.deepEqual(halts, ["account-warning"]);
+});
+
+test("a stalled response times out as a network error and frees the queue", async () => {
+  const { client, net } = setup({ timeoutMs: 20, reply: (call, i) => (i === 0 ? new Promise(() => {}) : response(OK)) });
+  const [stalled, next] = await Promise.allSettled([client.request("Op", "11111", {}), client.request("Op", "11111", {})]);
+  assert.equal(stalled.status, "rejected");
+  assert.equal(stalled.reason.kind, "network");
+  assert.equal(next.status, "fulfilled");
+  assert.equal(net.calls.length, 2);
+  assert.equal(client.stats().inFlight, false);
 });

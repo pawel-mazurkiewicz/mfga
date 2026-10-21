@@ -444,10 +444,13 @@ test("settings: turning the 2010 layout off greys out the parts that need it", a
   const panel = await selectTab(page, "look");
   await panel.locator('[data-mfga-setting="look.shell"]').click();
   assert.deepEqual(await lastUpdate(page), { look: { shell: false } });
-  for (const k of ["fixedHeader", "rightColumn", "chat", "welcome"]) {
+  for (const k of ["fixedHeader", "rightColumn", "chat"]) {
     assert.equal(await panel.locator(`[data-mfga-setting="look.${k}"]`).isDisabled(), true, k);
   }
-  for (const k of ["theme", "skinPosts"]) assert.equal(await panel.locator(`[data-mfga-setting="look.${k}"]`).isDisabled(), false, k);
+  // The welcome box is part of the News Feed, which is drawn without the 2010 layout too (feed-view.js).
+  for (const k of ["welcome", "theme", "skinPosts"]) assert.equal(await panel.locator(`[data-mfga-setting="look.${k}"]`).isDisabled(), false, k);
+  await panel.locator('[data-mfga-setting="look.welcome"]').click();
+  assert.deepEqual(await lastUpdate(page), { look: { welcome: false } });
   await panel.locator('[data-mfga-setting="look.font"][value="tahoma"]').click();
   assert.deepEqual(await lastUpdate(page), { look: { font: "tahoma" } });
   assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector(".mfga-dialog")).fontFamily.split(",")[0]), "tahoma");
@@ -510,6 +513,59 @@ test("settings: tabs, keyboard navigation, Tab trap and Esc", async () => {
   await page.evaluate(() => mfgaTest.openSettings());
   assert.deepEqual((await state()).visible, ["about"]);
   await page.click("text=Close");
+  assert.equal(await page.locator('[role="dialog"]').count(), 0);
+  await done(page);
+});
+
+test("dialog keeps Esc and Tab when the focused control is replaced and focus falls back to <body>", async () => {
+  const page = await openPage({ backdrop: false });
+  await page.evaluate(() => {
+    window.pageKeys = 0;
+    document.addEventListener("keydown", () => window.pageKeys++);
+  });
+  await page.evaluate(() => mfgaTest.setup());
+  await page.evaluate(() => mfgaTest.openSettings());
+  const panel = await selectTab(page, "health");
+  const exportButton = panel.locator("text=Export report");
+  await Promise.all([page.waitForEvent("download"), exportButton.click()]);
+  await panel.locator(".mfga-health-exported a[target=_blank]").focus();
+  // Exporting again re-renders the status line, removing the focused link.
+  await Promise.all([page.waitForEvent("download"), exportButton.evaluate((b) => b.click())]);
+  assert.equal(await page.evaluate(() => document.activeElement === document.body), true, "focus fell back to <body>");
+  await page.keyboard.press("Tab");
+  assert.equal(await page.evaluate(() => !!document.activeElement.closest(".mfga-dialog")), true, "Tab goes back into the dialog");
+  await exportButton.evaluate((b) => (b.focus(), b.blur()));
+  assert.equal(await page.evaluate(() => document.activeElement === document.body), true);
+  await page.keyboard.press("Escape");
+  assert.equal(await page.locator('[role="dialog"]').count(), 0, "Esc still closes");
+  assert.equal(await page.evaluate(() => window.pageKeys), 0, "the page never saw the keys");
+  await done(page);
+});
+
+test("a dialog whose layer someone else removed lets go of focus; settings open again", async () => {
+  const page = await openPage({ backdrop: false });
+  await page.evaluate(() => {
+    const input = document.createElement("input");
+    input.id = "page-input";
+    document.body.prepend(input);
+  });
+  await page.evaluate(() => mfgaTest.setup());
+  await page.evaluate(() => mfgaTest.openSettings());
+  await page.evaluate(() => document.querySelector("[data-mfga-dialog]").remove());
+  await page.focus("#page-input");
+  assert.equal(await page.evaluate(() => document.activeElement.id), "page-input", "no focus trap left behind");
+  await page.keyboard.type("hi");
+  assert.equal(await page.inputValue("#page-input"), "hi");
+
+  await page.evaluate(() => mfgaTest.openSettings());
+  assert.equal(await page.locator('[role="dialog"]').count(), 1, "settings open again");
+  await page.evaluate(() => document.querySelector("[data-mfga-dialog]").remove());
+  await page.evaluate(() => mfgaTest.openSettings()); // no focus change in between this time
+  assert.equal(await page.locator('[role="dialog"]').count(), 1);
+  const panel = await selectTab(page, "clean");
+  await panel.locator('[data-mfga-setting="clean.reels"]').click();
+  assert.deepEqual(await lastUpdate(page), { clean: { reels: false } });
+  await page.keyboard.press("Escape");
   assert.equal(await page.locator('[role="dialog"]').count(), 0);
   await done(page);
 });

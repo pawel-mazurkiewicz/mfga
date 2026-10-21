@@ -24,7 +24,7 @@ const LANGUAGES = [
 ];
 
 let lastTab = "feed"; // reopening the dialog returns to the tab it was closed on
-let active = null; // the open settings dialog: opening it again just returns it
+let active = null; // the open settings dialog, { handle, isOpen() }: opening it again just returns its handle
 
 /**
  * openSettingsDialog({ settings, healthSnapshot, exportReport }) -> { close() }
@@ -34,9 +34,11 @@ let active = null; // the open settings dialog: opening it again just returns it
  *   version         optional MFGA version for the About tab (platform.version)
  */
 export function openSettingsDialog({ settings, healthSnapshot, exportReport, version = null }) {
-  if (active) return active;
+  if (active?.isOpen()) return active.handle;
+  active?.handle.close(); // someone else took its layer off the page: clean up and open a fresh one
   let dialog = null;
   let binder = null;
+  let body = null;
   let reopening = false;
   let unsubscribe = null;
 
@@ -44,6 +46,7 @@ export function openSettingsDialog({ settings, healthSnapshot, exportReport, ver
     const current = createBinder(settings);
     binder = current;
     const view = buildView({ binder: current, settings, healthSnapshot, exportReport, version });
+    body = view.el;
     current.sync(settings.get());
     const control = focusSetting && view.el.querySelector(`[data-mfga-setting="${focusSetting}"]`);
     const focus = control && !control.closest("[hidden]") ? control : view.selectedTab();
@@ -78,8 +81,8 @@ export function openSettingsDialog({ settings, healthSnapshot, exportReport, ver
 
   open();
   unsubscribe = settings.subscribe?.(safe("settings-dialog", onSettings, { disableOnError: false }));
-  active = { close: () => dialog.close() };
-  return active;
+  active = { handle: { close: () => dialog.close() }, isOpen: () => body.isConnected };
+  return active.handle;
 }
 
 function buildView(ctx) {
@@ -216,14 +219,15 @@ function lookPanel({ binder }) {
   const shellParts = h(
     "div.mfga-settings-sub",
     ["fixedHeader", "rightColumn", "chat"].map((key) => binder.checkbox(`look.${key}`, t(`settings.look.${key}`))),
-    binder.checkbox("look.welcome", t("settings.look.welcome"), { patch: welcomePatch }),
   );
   binder.enableWhen(shellParts, (s) => s.look.shell);
+  // The welcome box belongs to the News Feed, which MFGA also draws without the 2010 layout.
+  const welcome = binder.checkbox("look.welcome", t("settings.look.welcome"), { patch: welcomePatch });
 
   return {
     el: h(
       "div",
-      row(t("settings.look.page"), () => [binder.checkbox("look.shell", t("settings.look.shell")), shellParts], { role: "group" }),
+      row(t("settings.look.page"), () => [binder.checkbox("look.shell", t("settings.look.shell")), shellParts, welcome], { role: "group" }),
       row(
         t("settings.look.style"),
         () => [binder.checkbox("look.theme", t("settings.look.theme")), binder.checkbox("look.skinPosts", t("settings.look.skinPosts"))],

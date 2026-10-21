@@ -84,8 +84,10 @@ function onRequest(details) {
       variables = null;
     }
   }
+  // Facebook's deploy revision lets the registry tell a fresh id from one cached across deploys.
+  const rev = formField(details.requestBody, "__rev") || formField(details.requestBody, "__spin_r") || undefined;
   load().then(() => {
-    learned[name] = { docId, variables, seenAt: Date.now() };
+    learned[name] = { docId, variables, seenAt: Date.now(), rev };
     scheduleSave();
   });
 }

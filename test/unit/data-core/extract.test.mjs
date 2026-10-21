@@ -164,6 +164,16 @@ describe("extractStory: fixture stories, every field", () => {
     assert.equal(fixture("friend-photo.jsonl").ai, false);
   });
 
+  test("AI label outside the header metadata is found, as the classifier's hideAI rule finds it", () => {
+    const node = story();
+    assert.ok(node.comet_sections.context_layout.story.comet_sections.metadata.length, "the header has metadata");
+    node.comet_sections.content.story.ai_section = { __typename: "CometFeedStoryGenAIContentTransparencyStrategy", was_detected_as_ai_generated: true };
+    assert.equal(extractStory(node).ai, true);
+    node.comet_sections.content.story.attached_story = { ai_section: { __typename: "CometFeedStoryGenAIContentTransparencyStrategy", was_detected_as_ai_generated: true } };
+    delete node.comet_sections.content.story.ai_section;
+    assert.equal(extractStory(node).ai, false, "a shared post's label is the shared story's own");
+  });
+
   test("viewerReaction is the reaction id; null when the viewer has not reacted", () => {
     assert.equal(extractStory(story({ feedback: { viewerReaction: REACTION.WOW } })).feedback.viewerReaction, REACTION.WOW);
     assert.equal(extractStory(story({ feedback: { viewerReaction: REACTION.HAHA, layout: "renderers" } })).feedback.viewerReaction, REACTION.HAHA);
@@ -186,6 +196,14 @@ describe("extractStory: shared stories are depth-limited", () => {
     assert.equal(s.shared.text, "level 1");
     assert.equal(s.shared.shared.text, "level 2");
     assert.equal(s.shared.shared.shared, null);
+  });
+
+  test("a __proto__ key in a shared copy is not merged (no inherited fields)", () => {
+    const node = JSON.parse('{"id":"n","attached_story":{"id":"s","__proto__":{"message":{"text":"inherited"},"post_id":"666"}}}');
+    const shared = extractStory(node).shared;
+    assert.equal(shared.text, null);
+    assert.equal(shared.postId, null);
+    assert.equal(shared.key, "s");
   });
 
   test("copies with a different id are not merged into the shared story", () => {

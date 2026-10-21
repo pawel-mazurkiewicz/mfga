@@ -231,3 +231,30 @@ test("runOp: only one retry, no retry for other errors, null when nothing is kno
 
   assert.equal(await runOp({ client: c3, ops: fakeOps({}) }, "Op", () => ({})), null);
 });
+
+test("runOp: a retry that fails the same way invalidates that id too, so no id is sent twice", async () => {
+  const ops = fakeOps({ Op: [{ docId: "1", fresh: false }, { docId: "2", fresh: false }, { docId: "3", fresh: false }] });
+  const client = fakeClient((name, docId) => {
+    if (docId !== "3") throw new GqlError("unknown doc", { code: 1570245, kind: "stale-doc" });
+    return { data: { ok: docId } };
+  });
+  await assert.rejects(runOp({ client, ops }, "Op", () => ({})), { kind: "stale-doc" });
+  assert.deepEqual(ops.invalidated, [{ name: "Op", docId: "1" }, { name: "Op", docId: "2" }]);
+  assert.deepEqual((await runOp({ client, ops }, "Op", () => ({}))).data, { ok: "3" });
+  assert.deepEqual(client.calls.map((c) => c.docId), ["1", "2", "3"]);
+});
+
+test("runOp + registry: every stale tier is tried once across calls", async () => {
+  const stale = () => {
+    throw new GqlError("unknown doc", { code: 1570245, kind: "stale-doc" });
+  };
+  const { registry } = setup({
+    preloader: { queryID: "11111111111111111", variables: null, preloaderID: "p" },
+    stored: { [OP]: { docId: "33333333333333333", variables: null, seenAt: 1_800_000_000_000, source: "learned" } },
+    probe: "44444444444444444",
+  });
+  const client = fakeClient(stale);
+  for (let i = 0; i < 3; i++) await runOp({ client, ops: registry }, OP, () => ({})).catch(() => {});
+  assert.deepEqual(client.calls.map((c) => c.docId), ["11111111111111111", "33333333333333333", "44444444444444444", FALLBACK_DOC_IDS[OP]]);
+  assert.equal(await runOp({ client, ops: registry }, OP, () => ({})), null, "nothing left to try");
+});

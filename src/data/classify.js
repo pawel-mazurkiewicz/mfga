@@ -77,7 +77,7 @@ const DECODE_ORDER = [...LIKELY, ...Object.keys(CATEGORY_NUMBERS).filter((name) 
 // top-level copy is sure to carry __typename "SponsoredData", and only when typenames are not obfuscated.
 const SPONSORED_DATA_KEYS = ["sponsored_data", "daspo_sto", "th_dat_spo"];
 // edge.sponsored_auction_distance under every alias seen (null on organic edges).
-const AUCTION_KEYS =["sponsored_auction_distance", "the_disan_sonsore_auctigo", "new_sponsorw_distn_aucton_of", "sposnsor_new_distac_action"];
+const AUCTION_KEYS = ["sponsored_auction_distance", "the_disan_sonsore_auctigo", "new_sponsorw_distn_aucton_of", "sposnsor_new_distac_action"];
 const SUSPECT_KEY = /spo|spn|auct|adv/i;
 
 const isObj = (v) => v != null && typeof v === "object" && !Array.isArray(v);

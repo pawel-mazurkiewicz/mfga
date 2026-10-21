@@ -171,7 +171,7 @@ export function startSkin({ settings } = {}) {
 
   const flush = rafBatch(
     safe("skin", () => {
-      if (enabled()) {
+      if (!stopped && enabled()) {
         for (const unit of dirty) if (unit.isConnected && !unit.firstElementChild?.hasAttribute(HIDE_ATTR)) tagUnit(unit);
       }
       dirty.clear();
@@ -188,7 +188,11 @@ export function startSkin({ settings } = {}) {
       for (const rec of records) {
         const unit = closestUnit(rec.target);
         if (unit) dirty.add(unit);
-        for (const n of rec.addedNodes) if (n.nodeType === 1) for (const u of n.querySelectorAll(UNIT_SELECTOR)) dirty.add(u);
+        for (const n of rec.addedNodes) {
+          if (n.nodeType !== 1) continue;
+          if (n.matches(UNIT_SELECTOR)) dirty.add(n);
+          for (const u of n.querySelectorAll(UNIT_SELECTOR)) dirty.add(u);
+        }
       }
       flush();
     }),
@@ -212,6 +216,7 @@ export function startSkin({ settings } = {}) {
       stopped = true;
       observer.disconnect();
       unsubscribe?.();
+      dirty.clear();
       untagAll(doc);
     },
   };

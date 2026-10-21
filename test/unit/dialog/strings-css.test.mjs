@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { STRINGS } from "../../../src/ui/dialog/strings.js";
 import { DEFAULTS } from "../../../src/shared/settings.js";
 import { baseCss, FONT_LUCIDA, FONT_TAHOMA } from "../../../src/ui/css/base.js";
@@ -15,6 +16,16 @@ test("every settings string exists in English and Polish", () => {
       assert.ok(typeof value === "string" && value.trim(), `${lang} ${key} is empty`);
     }
   }
+});
+
+test("every settings string is used by the dialog (no dead strings)", () => {
+  const dir = new URL("../../../src/ui/dialog/", import.meta.url);
+  const source = fs.readdirSync(dir).map((f) => fs.readFileSync(new URL(f, dir), "utf8")).join("\n");
+  // Keys the dialog builds from a name: tabs, feed sources, clean-up keys and the shell's parts.
+  const built = [/^settings\.tab\.\w+$/, /^settings\.feed\.(?:friends|groups|pages|favorites)$/, /^settings\.look\.(?:fixedHeader|rightColumn|chat)$/];
+  for (const key of Object.keys(DEFAULTS.clean)) built.push(new RegExp(`^settings\\.clean\\.${key}$`));
+  const unused = Object.keys(STRINGS.en).filter((key) => !source.includes(`"${key}"`) && !built.some((r) => r.test(key)));
+  assert.deepEqual(unused, []);
 });
 
 test("placeholders match between languages", () => {

@@ -55,7 +55,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export function createMockGraphql({ world = createWorld(), tokens = makeTokens(world), delayMs = 80, acceptDossierDocIds = true } = {}) {
   const startedAt = Date.now();
   const docIds = { ...DOC_IDS };
-  const retired = new Map(); // doc_id -> op, answered with 1570245
+  const retired = new Set(); // doc_ids answered with 1570245
   const usedIdempotence = new Map();
   const log = [];
   const inject = { staleDoc: 0, tokenError: 0, softBlock: 0, serverError: 0, checkpoint: null };
@@ -185,22 +185,26 @@ export function createMockGraphql({ world = createWorld(), tokens = makeTokens(w
   /** Pure request -> response step (also used directly by node tests). */
   function respond({ method = "POST", headers = {}, body = "" }) {
     const entry = { seq: ++seq, at: Date.now(), end: null, method, friendlyName: null, docId: null, variables: null, form: null, headers, status: 200, errorCode: null, error: null, problems: [], valid: false, concurrent: inFlight > 1 };
+    if (entry.concurrent) entry.problems.push("sent while another request was in flight");
     log.push(entry);
-    if (method !== "POST") return { entry, ...html(200, "") };
+    const done = (res) => {
+      entry.status = res.status;
+      return { entry, ...res };
+    };
+    if (method !== "POST") return done(html(200, ""));
     const form = new URLSearchParams(body || "");
     entry.form = Object.fromEntries(form);
     entry.friendlyName = form.get("fb_api_req_friendly_name");
     entry.docId = form.get("doc_id");
-    if (inject.checkpoint === "redirect") return { entry, ...html(302, "", { location: CHECKPOINT_URL }) };
-    if (inject.checkpoint === "html") return { entry, ...html(200, `<!DOCTYPE html><html><body><script type="application/json">{"is_checkpointed":true}</script><h1>${CHECKPOINT_MARKER}</h1></body></html>`) };
+    if (inject.checkpoint === "redirect") return done(html(302, "", { location: CHECKPOINT_URL }));
+    if (inject.checkpoint === "html") return done(html(200, `<!DOCTYPE html><html><body><script type="application/json">{"is_checkpointed":true}</script><h1>${CHECKPOINT_MARKER}</h1></body></html>`));
     if (inject.serverError > 0) {
       inject.serverError--;
-      entry.status = 500;
-      return { entry, ...html(500, "") };
+      return done(html(500, ""));
     }
     if (inject.softBlock > 0) {
       inject.softBlock--;
-      return { entry, ...html(200, "") };
+      return done(html(200, ""));
     }
     let text;
     try {
@@ -216,8 +220,8 @@ export function createMockGraphql({ world = createWorld(), tokens = makeTokens(w
       entry.error = err.message;
       text = JSON.stringify(gqlError(err.code, err.summary, err.message));
     }
-    entry.valid = !entry.errorCode && entry.problems.length === 0 && !entry.concurrent;
-    return { entry, ...html(200, text) };
+    entry.valid = !entry.errorCode && entry.problems.length === 0;
+    return done(html(200, text));
   }
 
   /** Playwright route handler: logs, delays like a network round trip, fulfils. */
@@ -247,7 +251,7 @@ export function createMockGraphql({ world = createWorld(), tokens = makeTokens(w
     },
     /** Retires an operation's doc_id (answered 1570245) and publishes a new one to fresh pages. */
     rotateDocId(op, newId) {
-      retired.set(docIds[op], op);
+      retired.add(docIds[op]);
       docIds[op] = newId;
     },
     /** Replaces the page tokens (old fb_dtsg -> 1357051 until the page is reloaded). */

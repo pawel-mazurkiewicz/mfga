@@ -140,6 +140,9 @@ export function commentVariables(template, p) {
   // Keep the template's plain-JSON tracking entries (composer info); the encrypted entry is the story's own.
   const plain = (Array.isArray(input.tracking) ? input.tracking : []).filter((s) => typeof s === "string" && s.startsWith("{"));
   assignPresent(input, { tracking: p.tracking ? [p.tracking, ...plain] : [], downstream_share_session_origin_uri: p.originUri });
+  // A learned capture is someone's own comment: its sticker or photo, styling, video time and reply target are not ours.
+  assignPresent(input, { attachments: null, formatting_style: null, vod_video_timestamp: null, reply_comment_parent_fbid: null });
+  assignPresent(v, { focusCommentID: null });
   return v;
 }
 

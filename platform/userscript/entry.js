@@ -8,7 +8,7 @@
 /* global unsafeWindow, GM_info, GM_getValue, GM_setValue, GM_addValueChangeListener, GM_registerMenuCommand, GM_addElement, __MFGA_MAIN_WORLD__, __MFGA_VERSION__ */
 import { boot } from "../../src/main.js";
 import { createBridgeClient, BRIDGE_CHANNEL } from "../../src/shared/bridge.js";
-import { navigate, requireOp } from "../../src/page/page-api.js";
+import { navigate, readTokens, requireOp } from "../../src/page/page-api.js";
 
 const W = (typeof unsafeWindow !== "undefined" && unsafeWindow) || window;
 const info = typeof GM_info !== "undefined" ? GM_info : null;
@@ -57,6 +57,7 @@ function pageApi() {
     return {
       requireOp: (name, timeoutMs = 3000) => requireOp(W, { name, timeoutMs }),
       navigate: async (url) => navigate(W, { url }),
+      readTokens: () => readTokens(W),
     };
   }
   if (typeof GM_addElement !== "function") return null;
@@ -69,6 +70,7 @@ function pageApi() {
   return {
     requireOp: (name, timeoutMs = 3000) => bridge.call("requireOp", { name, timeoutMs }, timeoutMs + 1000).catch(() => null),
     navigate: (url) => bridge.call("navigate", { url }, 2000).then(Boolean, () => false),
+    readTokens: () => bridge.call("readTokens", {}, 3000).catch(() => ({ dtsg: null, lsd: null })),
   };
 }
 

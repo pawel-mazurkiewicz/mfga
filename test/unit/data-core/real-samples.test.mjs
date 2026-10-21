@@ -150,7 +150,9 @@ describe("SSR data-sjs RelayPrefetchedStreamCache blocks (2026-10-10)", () => {
     assert.equal(s.feedback.id, "8AhkalbrtMEMWOco9ku3tthiSqkmxYyS9B==");
   });
 
-  test("streamed edge: a friend's photo post", async () => {
+  // Both SSR edges are suggestions in the untrimmed capture; their headers (context_layout, with the
+  // markers) were trimmed away here, so these tests only cover extraction from what is left.
+  test("streamed edge: a photo post (trimmed header, so no markers left) is kept and extracted", async () => {
     assert.equal((await classify(streamed.data)).reason, "keep");
     const s = extractStory(streamed.data.node);
     assert.equal(s.key, "238212940");

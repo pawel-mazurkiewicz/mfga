@@ -1,6 +1,7 @@
 // The fake Facebook "world": a deterministic viewer, friends, groups, pages, organic stories per Feeds-tab
-// source, junk (ads, suggestions, non-story units) and the data shown in the rails. Pure data; GraphQL shapes
-// live in graphql-shapes.mjs and DOM in chrome.mjs/posts.mjs.
+// source, junk (ads, suggestions, non-story units) and the data shown in the rails. Plain data plus one
+// mutable part, the UFI state (reactions, comments); GraphQL shapes live in graphql-shapes.mjs and DOM in
+// chrome.mjs / posts.mjs.
 
 import { createHash } from "node:crypto";
 import { TEXTS, JUNK_TEXTS, COMMENT_TEXTS } from "./texts.mjs";
@@ -242,7 +243,6 @@ export function createWorld({ now = DEFAULT_NOW, locale = "en", seed = 2010 } = 
     expectedMerged(sources = SOURCES) {
       return [...new Set(sources.flatMap((s) => feeds[s] || []))].sort(byTimeDesc);
     },
-    isJunkText: (text) => junk.some((j) => j.text && text.includes(j.text)),
   };
 }
 

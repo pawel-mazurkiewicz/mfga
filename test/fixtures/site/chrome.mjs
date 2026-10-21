@@ -82,8 +82,11 @@ function tab(ctx, key, href, icon, { active = false, count = 0 } = {}) {
   );
 }
 
-/** [role=banner] (dom-chrome §2.1). `activeTab` marks the current centre tab. */
-export function banner(ctx, { activeTab = "home" } = {}) {
+/**
+ * [role=banner] (dom-chrome §2.1). `activeTab` marks the current centre tab; `layers` go into the end
+ * section's contextual layer root, where Facebook renders the jewel dropdowns.
+ */
+export function banner(ctx, { activeTab = "home", layers = [] } = {}) {
   const { s, world } = ctx;
   const { counts } = world.rails;
   return el(
@@ -124,7 +127,7 @@ export function banner(ctx, { activeTab = "home" } = {}) {
         el("div", { role: "button", tabindex: 0, "aria-label": s.notifications(counts.notifications), "aria-haspopup": "dialog", "aria-expanded": "false", class: C.jewel }, svgIcon("bell"), counts.notifications ? badge(s.notificationsBadge, counts.notifications) : null),
         el("div", { role: "button", tabindex: 0, "aria-label": s.yourProfile, "aria-haspopup": "dialog", "aria-expanded": "false", class: C.jewel }, avatarSvg(ctx, { uri: avatarUri(world.viewer, 40 * ctx.scale), label: s.yourProfile, size: 40 })),
       ),
-      el("div", { class: C.layerRoot }),
+      el("div", { class: C.layerRoot }, layers),
     ),
   );
 }

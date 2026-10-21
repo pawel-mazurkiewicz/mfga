@@ -58,7 +58,11 @@ export function stitch(payloads) {
       data = deepMerge(data ?? {}, payload);
     } else {
       data ??= {};
-      applyIncremental(data, Array.isArray(p.path) ? p.path : [], p.label, payload);
+      try {
+        applyIncremental(data, Array.isArray(p.path) ? p.path : [], p.label, payload);
+      } catch {
+        // A path no list can take (a list's "length"): only this payload is lost, not the response.
+      }
     }
   }
   return { data, errors, final };

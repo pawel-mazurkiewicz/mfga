@@ -22,6 +22,15 @@ export const FORBIDDEN_KEYS = new Set([
 const IDENTITY_KEYS = new Set(["id", "ids", "actor", "actors", "author", "owner", "user", "viewer", "me", "profile", "identity", "cuser"]);
 const DATA_SUFFIX = /(?:url|uri|href|src|cursor|token)s?$/i;
 const ID_SUFFIX = /(?:^|[_\s-])(?:ids?|IDs?)$|[a-z0-9](?:Id|ID)s?$/;
+// Ids written without a word break, on the normalised key: uid, fbid, story_fbid, userid, USERID.
+const JOINED_ID = /(?:^u|fb|^(?:user|actor|owner|author|viewer|profile|page|group|post|story|target|node|feedback|photo|video|comment|thread|doc))ids?$/;
+// The last word of a compound key ("groupName", "post_text") carries the same meaning as the bare key.
+const PERSONAL_WORDS = new Set([
+  "name", "names", "text", "title", "message", "body", "description", "caption", "snippet", "email", "phone",
+  "address", "birthday", "avatar", "picture", "photo", "image", "link", "permalink", "keywords",
+]);
+// Compound keys that end in "name" but hold typenames, operation or module names.
+const TECHNICAL_NAMES = new Set(["typename", "friendlyname", "queryname", "operationname", "opname", "modulename"]);
 
 // Free-text values are only kept (scrubbed) under keys that hold error messages.
 const MESSAGE_KEYS = new Set(["first", "error", "err", "reason", "warning", "detail", "last"]);
@@ -30,14 +39,24 @@ const normKey = (key) => String(key).toLowerCase().replace(/[^a-z0-9]/g, "");
 const lastSegment = (key) => String(key).split(".").pop();
 const isCount = (v) => typeof v === "boolean" || (typeof v === "number" && Number.isFinite(v) && Math.abs(v) < 1e13);
 
+/** "groupName" -> "name", "post_text" -> "text", "GROUP_NAME" -> "name", "hideAI" -> "hideai". */
+function lastWord(key) {
+  const chunk = key.split(/[^A-Za-z0-9]+/).filter(Boolean).pop() || "";
+  const word = chunk === chunk.toUpperCase() ? chunk : /[A-Z]?[a-z0-9]+$/.exec(chunk)?.[0] || chunk;
+  return word.toLowerCase();
+}
+
 export function isForbiddenKey(key) {
   const k = lastSegment(key);
-  return FORBIDDEN_KEYS.has(normKey(k)) || DATA_SUFFIX.test(k) || ID_SUFFIX.test(k);
+  const n = normKey(k);
+  const personal = PERSONAL_WORDS.has(lastWord(k)) && !TECHNICAL_NAMES.has(n);
+  return FORBIDDEN_KEYS.has(n) || DATA_SUFFIX.test(k) || personal || isIdentityKey(k);
 }
 
 export function isIdentityKey(key) {
   const k = lastSegment(key);
-  return IDENTITY_KEYS.has(normKey(k)) || ID_SUFFIX.test(k);
+  const n = normKey(k);
+  return IDENTITY_KEYS.has(n) || ID_SUFFIX.test(k) || JOINED_ID.test(n);
 }
 
 /** Whether `value` may be exported under `key` at all (before the value itself is sanitised). */

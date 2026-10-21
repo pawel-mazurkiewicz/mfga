@@ -291,3 +291,36 @@ test("can(): whether a doc_id is known for an action", async () => {
   assert.equal(await actions.can("comments"), false);
   assert.equal(await actions.can("share"), false);
 });
+
+test("a payload nulled next to GraphQL errors is a failure, so the optimistic UI reverts", async () => {
+  const errors = (code) => [{ message: "Something went wrong", code, severity: "CRITICAL" }];
+  let s = setup({ handler: () => ({ data: { feedback_react: null }, errors: errors(1675030) }) });
+  assert.deepEqual(await s.actions.react(STORY, REACTIONS.LIKE), { ok: false, error: "server" });
+
+  s = setup({ handler: () => ({ data: { comment_create: null }, errors: errors(1357004) }) });
+  assert.deepEqual(await s.actions.comment(STORY, "x"), { ok: false, error: "auth" });
+
+  const table = { [ACTION_OPS.comments]: [{ docId: "77777777777777777", variables: null, source: "probe", fresh: true }] };
+  s = setup({ table, handler: () => ({ data: { node: null }, errors: errors(1675030) }) });
+  assert.deepEqual(await s.actions.comments(STORY, "C"), { ok: false, comments: [], cursor: "C", hasMore: false, error: "server" });
+});
+
+test("a learned comment capture's own content (sticker, styling, reply target, focus) is not replayed", async () => {
+  const learned = structuredClone(COMMENT_SAMPLE.variables);
+  Object.assign(learned.input, { attachments: [{ media: { id: "555" } }], formatting_style: "BOLD", vod_video_timestamp: 42, reply_comment_parent_fbid: "777" });
+  learned.focusCommentID = "Y29tbWVudDo3Nzc=";
+  const { actions, client } = setup({ table: { [ACTION_OPS.comment]: [{ docId: "88888888888888888", variables: learned, source: "learned", fresh: true }] } });
+  await actions.comment(STORY, "plain text");
+  const v = client.calls[0].variables;
+  assert.deepEqual(
+    [v.input.attachments, v.input.formatting_style, v.input.vod_video_timestamp, v.input.reply_comment_parent_fbid, v.focusCommentID],
+    [null, null, null, null, null],
+  );
+  assert.deepEqual(v.input.message, { ranges: [], text: "plain text" });
+
+  const bare = { input: { feedback_id: "OLD", message: { text: "old" } } };
+  const s2 = setup({ table: { [ACTION_OPS.comment]: [{ docId: "88888888888888888", variables: bare, source: "learned", fresh: true }] } });
+  await s2.actions.comment(STORY, "x");
+  assert.deepEqual(Object.keys(s2.client.calls[0].variables), ["input"], "keys the capture lacks are not added");
+  assert.equal("attachments" in s2.client.calls[0].variables.input, false);
+});

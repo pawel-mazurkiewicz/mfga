@@ -57,7 +57,7 @@ export function el(tag, attrMap, ...kids) {
 export function inlineJson(value) {
   return JSON.stringify(value)
     .replace(/\//g, "\\/")
-    .replace(/[\u007f-￿]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+    .replace(/[\u007f-\uffff]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
 }
 
 /** <script type="application/json" data-content-len=N data-sjs>…</script> as served in 2026. */

@@ -78,11 +78,6 @@ function jewelTemplates(ctx) {
   ];
 }
 
-/** The banner with its dropdown templates placed in the end section's layer root. */
-function bannerWithLayers(ctx, activeTab) {
-  return raw(String(banner(ctx, { activeTab })).replace(`<div class="${C.layerRoot}"></div>`, String(el("div", { class: C.layerRoot }, jewelTemplates(ctx)))));
-}
-
 function composerTemplate(ctx) {
   const { s, world } = ctx;
   return el(
@@ -94,7 +89,8 @@ function composerTemplate(ctx) {
 
 /**
  * Native feed: the SSR page as [aria-posinset] slots, a trailing skeleton, and later pages as <template>s the
- * runtime appends on scroll. Returns { node, units, payloads } (payloads = SSR page as Relay JSON lines).
+ * runtime appends on scroll. Returns { list, templates, units, payloads } (payloads: the SSR page as Relay
+ * incremental payloads).
  */
 function nativeFeed(o, feedName, { pages = 3, listRole = null } = {}) {
   const { world, ctx, fetchSize } = o;
@@ -141,7 +137,7 @@ function homeLike(o, feedName) {
 }
 
 function mountTree(ctx, activeTab, layout) {
-  return el("div", el("div", el("div", bannerWithLayers(ctx, activeTab), el("div", { class: C.main }, layout)), chatRoot(ctx)));
+  return el("div", el("div", el("div", banner(ctx, { activeTab, layers: jewelTemplates(ctx) }), el("div", { class: C.main }, layout)), chatRoot(ctx)));
 }
 
 const BUILDERS = {

@@ -19,7 +19,8 @@
  * @property {() => Promise<Record<string, LearnedOp>>} learnedOps
  *   Operations Facebook itself was seen sending (extension background webRequest). {} when unavailable.
  * @property {{requireOp(name: string, timeoutMs?: number): Promise<string|null>,
- *             navigate(url: string): Promise<boolean>}|null} page
+ *             navigate(url: string): Promise<boolean>,
+ *             readTokens(): Promise<{dtsg: string|null, lsd: string|null}>}|null} page
  *   MAIN-world helper (read-only requireLazy probe, SPA navigation). null when unavailable.
  * @property {(label: string, fn: () => void) => void} addMenuCommand
  *   Userscript manager menu / extension action. No-op when unavailable.

@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { DEFAULTS } from "../../../src/shared/settings.js";
 import {
   errorRows,
   formatValue,
@@ -37,6 +38,29 @@ test("isForbiddenKey: counter names, typenames and ordinary words pass", () => {
   for (const k of ["counters", "classify.drop.category:ENGAGEMENT", "gql.requests", "valid", "paid", "android", "__typename", "tokensFound", "sources", "version", "first", "harvest.cursor.repeat"]) {
     assert.equal(isForbiddenKey(k), false, k);
   }
+});
+
+test("isForbiddenKey: compound keys ending in a personal word, ids written without a word break", () => {
+  for (const k of ["groupName", "actorName", "GROUP_NAME", "post_text", "storyTitle", "commentBody", "linkImage", "uid", "fbid", "story_fbid", "userid", "USERID", "pageids"]) {
+    assert.equal(isForbiddenKey(k), true, k);
+  }
+  for (const k of ["friendlyName", "queryName", "operationName", "fluid", "squid", "guide", "titleCount", "nameLength", "CometPhotoRootQuery"]) {
+    assert.equal(isForbiddenKey(k), false, k);
+  }
+});
+
+test("isForbiddenKey: no setting name except the keyword list is treated as personal", () => {
+  const leaves = (obj) => Object.entries(obj).flatMap(([k, v]) => (v && typeof v === "object" && !Array.isArray(v) ? [k, ...leaves(v)] : [k]));
+  assert.deepEqual(leaves(DEFAULTS).filter((k) => isForbiddenKey(k)), ["keywords"]);
+});
+
+test("sanitizeReport drops ids under joined keys and names under compound keys (regression)", () => {
+  const out = sanitizeReport({
+    facts: { uid: 532512345, fbid: 1234567890, story_fbid: 123456789, groupName: "Cyclists", actorName: "Anna", postText: "Hello", storyTitle: "Party", friendlyName: "CometModernHomeFeedQuery" },
+    counters: { "stream.render.groupName": 3 },
+  });
+  assert.deepEqual(out.facts, { friendlyName: "CometModernHomeFeedQuery", _removedKeys: 7 });
+  assert.deepEqual(out.counters, { "stream.render.groupName": 3 }, "a count may still carry such a name");
 });
 
 test("isIdentityKey: ids and people, not plain data keys", () => {

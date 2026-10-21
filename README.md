@@ -3,6 +3,17 @@
 **Facebook, the way it looked in 2010 — and a News Feed with only your friends, groups and pages.**
 No ads. No "Suggested for you". No reels, no stories tray, no People You May Know.
 
+<table>
+  <tr>
+    <th>Facebook, February 2010</th>
+    <th>facebook.com today, with MFGA</th>
+  </tr>
+  <tr>
+    <td><img src="assets/reference/2010-home.png" alt="Facebook's home page in February 2010: blue bar, left column with News Feed and Chat with Friends, the News Feed, and a right column with requests, events and pokes"></td>
+    <td><img src="docs/screenshots/home.png" alt="The same page drawn by MFGA over today's facebook.com: blue bar with jewels, left column, a News Feed of friends' and groups' posts, and a right column counting the ads removed"></td>
+  </tr>
+</table>
+
 MFGA is a browser extension (Chrome, Edge, Firefox) and a Tampermonkey userscript. It puts the
 February-2010 Facebook back on top of today's facebook.com:
 
@@ -29,11 +40,60 @@ asks for one of them, merges them by time, removes duplicates (a friend's post i
 once), and drops every ad and suggestion before anything is drawn. Each source can be switched off in
 the settings. **Top News** shows Facebook's ranked feed, cleaned the same way.
 
+<table>
+  <tr>
+    <th>Facebook today</th>
+    <th>With MFGA</th>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/before.png" alt="Today's Facebook home page: the stories tray, Facebook's ranked feed, and Sponsored ads in the right column"></td>
+    <td><img src="docs/screenshots/after.png" alt="The same account with MFGA: the 2010 page with a chronological feed of friends, groups and pages, and nothing sponsored"></td>
+  </tr>
+</table>
+
 Older posts load with the 2010 **Older Posts** button (or automatically, if you prefer). Open a photo
 or a profile from the feed and press Back: you are where you left off, with the same stories.
 
 The combined feed does not depend on the 2010 look: switch the 2010 layout off and Home keeps Facebook's
 2026 page around MFGA's feed (and loses the right column's ads).
+
+## A closer look
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/story.png" alt="A 2010 story: a Page's photo, 26 minutes ago · Comment · Unlike · Share, You and 70 others like this, the comments, and a comment being written"></td>
+    <td width="50%"><img src="docs/screenshots/filter-friends.png" alt="The Friends feed: News Feed opened in the left column with Friends, Groups, Pages and Favorites under it"></td>
+  </tr>
+  <tr>
+    <td><b>Like, comment and read comments</b> in the stream itself, with Facebook's own requests.</td>
+    <td><b>One source at a time</b>: Friends, Groups, Pages or Favorites, under News Feed.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/settings.png" alt="MFGA Settings, News Feed tab: Most Recent or Top News, which sources, Older Posts button or automatic loading, stories at a time, comments, AI posts and hidden words"></td>
+    <td><img src="docs/screenshots/home-pl.png" alt="The 2010 home page in Polish: Aktualności, Najciekawsze · Najnowsze, Lubię to!"></td>
+  </tr>
+  <tr>
+    <td><b>Account ▾ → MFGA Settings…</b> — what you see and how it looks.</td>
+    <td><b>Po polsku</b>, in Facebook's own 2010 Polish wording.</td>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshots/groups-feed.png" alt="Facebook's groups feed under the 2010 blue bar and left column, its posts restyled with square pictures and Like · Comment · Share links"></td>
+    <td><img src="docs/screenshots/profile.png" alt="A Facebook profile page under the 2010 blue bar, in 2010 colours"></td>
+  </tr>
+  <tr>
+    <td><b>Facebook's own feeds</b> (groups, search, profiles) are cleaned and restyled in 2010 fashion.</td>
+    <td><b>Every other page</b> keeps Facebook's layout under the 2010 bar and colours.</td>
+  </tr>
+  <tr>
+    <td colspan="2"><img src="docs/screenshots/layout-off.png" alt="With the 2010 layout switched off: today's Facebook page with MFGA's combined feed in the middle and no ads in the right column"></td>
+  </tr>
+  <tr>
+    <td colspan="2"><b>Just the feed</b>: with the 2010 layout off, MFGA's feed sits in today's Facebook page.</td>
+  </tr>
+</table>
+
+<sub>The screenshots are of MFGA's test copy of facebook.com, the one its browser tests run against, with
+made-up people; the February 2010 picture is Facebook's own. Regenerate them with `npm run screenshots`.</sub>
 
 ## Install
 
@@ -135,6 +195,7 @@ If Facebook ever asks you to verify your account, MFGA stops all of its own requ
 ```sh
 npm install          # esbuild + playwright-core (tests use the system Chromium)
 npm run build        # dist/mfga.user.js, dist/chrome, dist/firefox, store zips
+npm run screenshots  # docs/screenshots/ for this README, from the build on the test copy of facebook.com
 npm test             # unit tests (node:test)
 npm run test:e2e     # browser tests against a fake facebook.com
 npm run atlas        # rebuild the icon atlas from assets/sprites (needs Python + Pillow)

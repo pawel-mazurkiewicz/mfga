@@ -9,6 +9,9 @@ const UFI_BG = "#EDEFF4";
 const rootRules = `
 .mfga-stream *,.mfga-story,.mfga-story *,.mfga-stream *::before,.mfga-stream *::after{box-sizing:border-box}
 .mfga-stream img{max-width:none}
+/* Without the 2010 layout the stream sits in Facebook's own home column, a centred flex row: give it the width of
+   Facebook's feed rather than its content's. */
+html:not([data-mfga-shell]) #mfga-stream{flex:none;width:680px;max-width:100%;margin-left:auto;margin-right:auto}
 .mfga-linkbtn{display:inline;margin:0;padding:0;border:0;background:none;font:inherit;line-height:inherit;color:${BLUE};text-align:left;cursor:pointer}
 .mfga-linkbtn:hover{text-decoration:underline}
 .mfga-time{color:#808080;text-decoration:none;border:0;cursor:inherit}
@@ -126,7 +129,7 @@ const welcomeRules = `
 .mfga-stream .mfga-welcome-steps{flex:1;min-width:0;margin:6px 0 0;padding:0;list-style:none}
 .mfga-welcome-step{display:flex;align-items:flex-start;margin:0 0 10px;line-height:14px}
 .mfga-welcome-step:last-child{margin-bottom:0}
-html[data-mfga-shell] .mfga-welcome-plain,html:not([data-mfga-shell]) .mfga-welcome-shell{display:none}
+html[data-mfga-shell] .mfga-welcome-plain,html:not([data-mfga-shell]) :is(.mfga-welcome-shell,.mfga-welcome-m3){display:none}
 .mfga-welcome-num{flex:none;width:15px;height:16px;margin-right:8px;background:#A6B2CA;color:#fff;font-weight:bold;line-height:16px;text-align:center}
 .mfga-welcome-learn{display:inline-block;margin-top:12px;font-size:13px;font-weight:bold;line-height:16px}
 .mfga-welcome-arrow{display:inline-block;width:0;height:0;margin:0 0 2px 5px;border-left:4px solid ${BLUE};border-top:4px solid transparent;border-bottom:4px solid transparent;vertical-align:middle}

@@ -9,7 +9,10 @@ const PROJECT_URL = "https://github.com/pawel-mazurkiewicz/mfga#readme";
 const block = (cls) => h("i", { class: `mfga-welcome-block ${cls}` });
 const marker = (n, cls) => h("b", { class: `mfga-welcome-marker ${cls}` }, String(n));
 
-/** Miniature of the 2010 home page; markers 1–3 point at the stream, the filters and the Account menu. */
+/**
+ * Miniature of the 2010 home page; markers 1–3 point at the stream, the filters and the Account menu (marker 3
+ * is hidden without the 2010 layout, which has no Account menu).
+ */
 function miniature() {
   const stories = [0, 1, 2, 3].map(() => h("i.mfga-welcome-mini-story", block("mfga-welcome-pic"), block("mfga-welcome-lines")));
   return h(

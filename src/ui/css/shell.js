@@ -8,6 +8,9 @@ const FONT_TAHOMA = 'tahoma, "lucida grande", verdana, arial, sans-serif';
 const S = "#mfga-shell";
 const FOOTER_HEIGHT = 70; // curve 9 + rule 1 + 8 + one 14px line + 38 (#footerContainer padding)
 const COLUMN_ROUTES = ['html[data-mfga-route="home"]', 'html[data-mfga-route="groups-feed"]'];
+const CHAT_TAB = { right: 15, width: 200 }; // .mfga-chat-tab: 188px + 2×5px padding + 2×1px border
+// The narrowest window in which the groups feed's column (Facebook's, 680px) ends left of the chat tab.
+const GROUPS_CHAT_MIN = 2 * (GRID.wide.x + GRID.wide.w) - GRID.page + 2 * (CHAT_TAB.right + CHAT_TAB.width);
 const onColumns = (sel) => COLUMN_ROUTES.map((r) => `${r} ${sel}`).join(",");
 
 /** Facebook's own chrome: hidden, but its layers, dialogs and chat keep working (dom-chrome §2.5, §7.4). */
@@ -31,7 +34,8 @@ function baseCss() {
   const g = GRID;
   // On "page" routes Facebook's own page paints over our z-index-0 layers, so only the bar and the footer
   // show. The chat tab is hidden there too: it would sit under Facebook's page (and still take clicks), and
-  // raising it would cover Facebook's docked chat, which stays available on those routes.
+  // raising it would cover Facebook's docked chat, which stays available on those routes. For the same reason
+  // it steps aside on the groups feed in a window too narrow for that feed's column and the tab side by side.
   return `
 ${S}{position:absolute;top:0;left:0;right:0;height:0;direction:ltr;font-family:${FONT};font-size:11px;line-height:1.28;color:#333;text-align:left}
 html[data-mfga-font="tahoma"] ${S}{font-family:${FONT_TAHOMA}}
@@ -49,6 +53,7 @@ ${S} .mfga-shell-sep{left:${g.left.w}px;width:1px;z-index:0;background:#CCC}
 ${S} .mfga-shell-rule{left:${g.rule}px;width:1px;z-index:0;background:#EDEDED}
 html[data-mfga-route="page"] ${S} :is(.mfga-shell-backdrop,.mfga-shell-sep,.mfga-shell-rule,.mfga-shell-left,.mfga-shell-right,.mfga-chat-tab),
 html[data-mfga-route="groups-feed"] ${S} :is(.mfga-shell-rule,.mfga-shell-right){display:none}
+@media (max-width:${GROUPS_CHAT_MIN - 0.02}px){html[data-mfga-route="groups-feed"] ${S} .mfga-chat-tab{display:none}}
 `;
 }
 
@@ -164,7 +169,10 @@ ${S} .mfga-chat-tab:hover{background:linear-gradient(#FFF,#E5E5E5)}
  */
 function chatHeadCss(settings) {
   if (settings?.look?.chat === false) return "";
-  return `${onColumns(':is([aria-label="New message"],[aria-label="Nowa wiadomość"])[role="button"]:not([role="dialog"] *)')}{display:none!important}\n`;
+  const head = ':is([aria-label="New message"],[aria-label="Nowa wiadomość"])[role="button"]:not([role="dialog"] *)';
+  return `html[data-mfga-route="home"] ${head}{display:none!important}
+@media (min-width:${GROUPS_CHAT_MIN}px){html[data-mfga-route="groups-feed"] ${head}{display:none!important}}
+`;
 }
 
 export function shellCss(settings) {

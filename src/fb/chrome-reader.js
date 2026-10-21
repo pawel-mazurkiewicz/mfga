@@ -10,6 +10,8 @@ const RAIL_VERSION = 2;
 const CONTACTS_FRESH_MS = 10 * 60 * 1000;
 const REFRESH_GAP_MS = 400;
 const RESCAN_MS = 2000;
+const FIRST_SCAN_MS = 150;
+const FIRST_SCAN_FOR_MS = 10000;
 
 // ---------------------------------------------------------------------------------------------------
 // Labels (EN + PL) and pure parsers
@@ -361,6 +363,7 @@ export function createChromeReader({ platform, identityHint = null } = {}) {
   let observer = null;
   let targets = [];
   let rescanTimer = 0;
+  let firstTimer = 0;
   let refreshTimer = 0;
   let lastRefresh = 0;
   let persistTimer = 0;
@@ -472,12 +475,26 @@ export function createChromeReader({ platform, identityHint = null } = {}) {
     return true;
   };
 
+  // Facebook renders its banner and rails a moment after we start: until they are all there, look for them
+  // often, so the shell's name, counters and lists do not wait for the first 2 s rescan.
+  const complete = () => targets.length >= (onRailRoute() ? 3 : 1);
+  const scan = () => {
+    if (retarget()) scheduleRefresh();
+  };
   const start = () => {
     observer = new MutationObserver(scheduleRefresh);
-    retarget();
-    rescanTimer = setInterval(() => {
-      if (retarget()) scheduleRefresh();
-    }, RESCAN_MS);
+    scan();
+    const firstUntil = Date.now() + FIRST_SCAN_FOR_MS;
+    firstTimer = complete()
+      ? 0
+      : setInterval(() => {
+          scan();
+          if (complete() || Date.now() > firstUntil) {
+            clearInterval(firstTimer);
+            firstTimer = 0;
+          }
+        }, FIRST_SCAN_MS);
+    rescanTimer = setInterval(scan, RESCAN_MS);
   };
 
   const stop = () => {
@@ -485,6 +502,8 @@ export function createChromeReader({ platform, identityHint = null } = {}) {
     observer = null;
     targets = [];
     clearInterval(rescanTimer);
+    clearInterval(firstTimer);
+    firstTimer = 0;
     clearTimeout(refreshTimer);
     refreshTimer = 0;
   };

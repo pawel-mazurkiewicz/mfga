@@ -443,6 +443,120 @@ test("the Stories tray takes only its own labelled region along, never a wider t
   await page.close();
 });
 
+/**
+ * Defines window.__card(kind, opts) in the page: one card of Facebook's Home right column, shaped like the
+ * 2026 captures (dom-chrome §4.1): a heading, then the ad rows (link + its menu button), the birthday link, the
+ * contact links, or the group chat buttons. `heading: false` leaves the heading out; `adLink` overrides the
+ * ad links' attributes.
+ */
+const defineRailCards = (page) =>
+  page.evaluate(() => {
+    const el = (tag, attrs = {}, ...kids) => {
+      const e = document.createElement(tag);
+      for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+      e.append(...kids);
+      return e;
+    };
+    const head = (title, heading) => (heading === false ? [] : [el("div", {}, el("h3", {}, el("span", {}, title)))]);
+    window.__card = (kind, { heading, adLink } = {}) => {
+      if (kind === "ads") {
+        const rows = [1, 2].map((i) =>
+          el(
+            "div",
+            {},
+            el("a", adLink ?? { href: `https://l.facebook.com/l.php?u=https%3A%2F%2Fshop${i}.example%2F`, target: "rhcad3", attributionsrc: `/privacy_sandbox/comet/register/source/?xt=AZ${i}&eid=ARB${i}`, role: "link" }, `Shop ${i} shop${i}.example`),
+            el("div", { role: "button", "aria-label": `Open menu for Shop ${i} sponsored content` }),
+          ),
+        );
+        return el("div", {}, el("div", {}, ...head("Sponsored", heading), el("div", {}, ...rows)));
+      }
+      if (kind === "birthdays") return el("div", {}, ...head("Birthdays", heading), el("a", { href: "/events/birthdays/" }, "Priya Raman's birthday is today."));
+      if (kind === "contacts") {
+        const people = [1, 2, 3].map((i) => el("li", {}, el("a", { href: `/messages/t/10000000000000${i}/` }, `Friend ${i}`)));
+        return el("div", {}, ...head("Contacts", heading), el("div", { role: "button", "aria-label": "Search for a name or group" }), el("ul", {}, ...people));
+      }
+      // Group chats: buttons only, no link (the 2026 rail).
+      return el("div", {}, ...head("Group chats", heading), el("ul", {}, el("li", {}, el("div", { role: "button" }, "Ela, Marcin and 9 others"))), el("div", { role: "button" }, "Create group chat"));
+    };
+    window.__rail = (...cards) => {
+      const rail = el("div", { role: "complementary" }, el("div", {}, ...cards));
+      document.body.append(rail);
+      return rail;
+    };
+  });
+
+/** What a [role=complementary] shows: its visible headings, visible ad links and the headings inside each mark. */
+const railShown = (page, selector = '[role="complementary"]') =>
+  page.evaluate((selector) => {
+    const rail = document.querySelector(selector);
+    const shown = (e) => e.getClientRects().length > 0;
+    return {
+      headings: [...rail.querySelectorAll("h3")].filter(shown).map((h) => h.textContent),
+      ads: [...rail.querySelectorAll("a[attributionsrc], a[target]")].filter(shown).length,
+      marked: [...rail.querySelectorAll("[data-mfga-hide]")].map((m) => [...m.querySelectorAll("h3")].map((h) => h.textContent).join("+") || "(no heading)"),
+    };
+  }, selector);
+
+test("right column: a Sponsored card that mounts before the other cards hides only itself, and its mark follows the setting", async () => {
+  const page = await open("feed.html");
+  await defineRailCards(page);
+  // Comet reveals the column's cards in order (a SuspenseList): the Sponsored card first, alone in the wrapper.
+  await page.evaluate(() => window.__rail(window.__card("ads")));
+  await settle(page);
+  await page.evaluate(() => document.querySelector('[role="complementary"] > div').append(window.__card("birthdays"), window.__card("contacts"), window.__card("groupChats")));
+  await settle(page);
+  assert.deepEqual(await railShown(page), { headings: ["Birthdays", "Contacts", "Group chats"], ads: 0, marked: ["Sponsored"] });
+  await page.evaluate(() => window.__settings.update({ clean: { sponsored: false } }));
+  await settle(page);
+  assert.deepEqual(await railShown(page), { headings: ["Sponsored", "Birthdays", "Contacts", "Group chats"], ads: 2, marked: [] }, "nothing stays hidden with ads shown");
+  await page.evaluate(() => window.__settings.update({ clean: { sponsored: true } }));
+  await settle(page);
+  assert.deepEqual(await railShown(page), { headings: ["Birthdays", "Contacts", "Group chats"], ads: 0, marked: ["Sponsored"] });
+  noErrors(page);
+  await page.close();
+});
+
+test("right column: a Sponsored card without its heading never takes Group chats along", async () => {
+  const page = await open("feed.html");
+  await defineRailCards(page);
+  // No Contacts (some 2026 accounts lost them) and no Birthdays today: Group chats has buttons but no link.
+  await page.evaluate(() => window.__rail(window.__card("ads", { heading: false }), window.__card("groupChats")));
+  await settle(page);
+  assert.deepEqual(await railShown(page), { headings: ["Group chats"], ads: 0, marked: ["(no heading)"] });
+  noErrors(page);
+  await page.close();
+});
+
+test("right column: only real ad links count, and a dialog's column (the photo viewer's comments) is never touched", async () => {
+  const page = await open("feed.html");
+  await defineRailCards(page);
+  await page.evaluate(() => {
+    // Organic 2026 posts carry a privacy-sandbox attributionsrc on every link, without an ad event id.
+    const organic = () => ({ href: "/marta.kowalczyk.77", attributionsrc: "/privacy_sandbox/comet/register/source/?xt=AZpost", role: "link" });
+    const post = () => {
+      const box = document.createElement("div");
+      for (let i = 0; i < 3; i++) box.append(Object.assign(document.createElement("a"), { textContent: `link ${i}` }));
+      for (const [i, a] of [...box.children].entries()) for (const [k, v] of Object.entries(organic())) a.setAttribute(k, i ? `${v}${i}` : v);
+      return box;
+    };
+    window.__rail(post()).id = "page-column";
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    const viewer = window.__rail(post(), window.__card("ads"));
+    viewer.id = "viewer-column";
+    dialog.append(viewer);
+    document.body.append(dialog);
+    // An ad known only by its attribution source's ad event id (uBO's rule), on the page's column.
+    window.__rail(window.__card("ads", { adLink: { href: "https://l.facebook.com/l.php?u=x", attributionsrc: "/privacy_sandbox/comet/register/source/?xt=AZ9&eid=ARB9" } }), window.__card("contacts")).id = "home-column";
+  });
+  await settle(page);
+  assert.deepEqual((await railShown(page, "#page-column")).marked, [], "organic links are not ads");
+  assert.deepEqual((await railShown(page, "#viewer-column")).marked, [], "a dialog's column is left alone");
+  assert.deepEqual(await railShown(page, "#home-column"), { headings: ["Contacts"], ads: 0, marked: ["Sponsored"] });
+  noErrors(page);
+  await page.close();
+});
+
 test("the skin tags a post whose [aria-posinset] element is itself the inserted node", async () => {
   const page = await open("feed.html");
   await page.evaluate(() => {

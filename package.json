@@ -8,6 +8,7 @@
   "scripts": {
     "atlas": "python3 tools/make-atlas.py",
     "build": "node scripts/build.mjs",
+    "screenshots": "node scripts/screenshots.mjs",
     "test": "node --test \"test/unit/**/*.test.mjs\"",
     "test:e2e": "node --test --test-concurrency=1 \"test/e2e/**/*.test.mjs\"",
     "check": "npm run build && npm test && npm run test:e2e"

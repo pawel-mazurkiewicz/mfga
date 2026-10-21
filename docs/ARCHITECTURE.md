@@ -117,11 +117,15 @@ own home `[role="main"]` (found by role, never one inside a dialog) and the rest
 
 Leaving and coming back (`src/main.js`):
 * A photo opened over Home or the groups feed is a push view: the URL changes but Facebook keeps the page
-  mounted under its viewer. While a push view (`pushViewOpen()`, a wide centred dialog) is open, main keeps
-  the previous route on screen for the layout, the shell, the cleaner and our stream. Comet shows the viewer
+  mounted under its viewer. While a push view (`pushViewOpen()`, a wide centred dialog, over that page's own
+  `[role=main]`, noted while it was on screen and still mounted) is open, main keeps the previous route on
+  screen for the layout, the shell, the cleaner and our stream; a dialog over the page after it is no push view. Comet shows the viewer
   a moment after the URL changes, so main looks again 150, 400, 800 and 1500 ms later and puts Home back if
-  the viewer shows up. A viewer missing at two checks in a row (it led to another page), or for two remount
-  ticks, hands over to the URL's route.
+  the viewer shows up. A link in the viewer changes the URL while the viewer stays up for the next page: the
+  moment Facebook replaces that `[role=main]` (a MutationObserver while the push view is kept), main hands over
+  to the URL's route, before the new page is drawn with Home's layout. A viewer missing at two checks in a row,
+  or for two remount ticks, hands over too. `html[data-mfga-theme]` follows the URL throughout: the viewer's
+  media route stays un-themed, as Facebook forces it dark.
 * Away from Home the stream is detached but kept (same feed signature, same stories, no request). Back on
   Home it is re-attached at once, and after Back/Forward (a trusted `popstate`) or a push view the window is
   scrolled to where the reader was, re-asserted for 2 s while Facebook re-renders the column, until the
@@ -193,8 +197,11 @@ built-in 2026-09 template with ids replaced.
   (`data-focus-target="stories_tray"`), People You May Know, group suggestions, Meta AI. Hides by marking
   the unit's first child `data-mfga-hide` and a `:has()` rule. Never within 1200 px of the page bottom.
   With the ads setting it also hides the right column's "Sponsored" block, found without words: the widest
-  block in `[role=complementary]` around the `rhcadN` / privacy-sandbox ad links that holds no other link
-  and no second heading (it only shows when the 2010 layout, which replaces that column, is off).
+  block in the page's `[role=complementary]` (never a dialog's) around the ad links (`rhcadN` target, or a
+  privacy-sandbox `attributionsrc` with `eid=`) that holds nothing of another card: no other link, no second
+  heading or one below the ad, no more buttons than ads. Comet mounts the Sponsored card before the cards after
+  it, so a marked block is checked again when nodes land inside it (it only shows when the 2010 layout, which
+  replaces that column, is off).
 * `src/fb/skin.js` — tags parts of native posts (`data-mfga-part="avatar|name|message|actions|..."`) so
   the 2010 stylesheet can restyle them (square 50px avatars, blue bold names, text-link action bar,
   #EDEFF4 comment area).

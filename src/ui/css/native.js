@@ -87,9 +87,10 @@ ${P("summary")}, ${P("comments")}, ${P("composer")} {
   background: #EDEFF4 !important; margin: 2px var(--mfga-pad) 0 calc(var(--mfga-indent) + var(--mfga-pad)) !important; border: 0 !important; border-radius: 0 !important;
 }
 ${P("summary")} { padding: 5px !important; justify-content: flex-start !important; gap: 0 12px !important; }
-/* 2010 order: "Like · Comment · Share" first, then the light-blue box (likes, comments, composer). */
+/* 2010 order: "Like · Comment · Share" first, then the light-blue box (likes, comments, composer). Only the links
+   move: whatever else the footer holds (the comments, the comment box) keeps Facebook's order after the likes. */
 ${P("footer")} { display: flex !important; flex-direction: column !important; }
-${P("footer")} > ${IN("summary")} { order: 1; }
+${P("footer")} > ${IN("actions")} { order: -1; }
 ${P("actions")} ${IN("summary")} { flex: 1 1 100% !important; margin-left: 0 !important; }
 ${P("summary")}, ${P("summary")} *, ${P("comments")}, ${P("comments")} *, ${P("composer")} * {
   font-size: 11px !important; line-height: 14px !important;

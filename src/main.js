@@ -255,6 +255,8 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
   let haltNotice = null;
   let pushBase = null; // the Home or groups-feed route kept on screen while a push view (a photo) is open over it
   let pushGoneTicks = 0;
+  let baseColumn = null; // Facebook's [role=main] when Home or the groups feed was last on screen at its own URL
+  let baseWatch = null; // while a push view is kept: notices the moment Facebook replaces that column
   let settling = 0; // the current settleReturn() run; an older one stops
   let homeY = 0; // the window scroll in our stream the last time Home was on screen
   let lastTraversal = -Infinity; // performance.now() of the last Back/Forward
@@ -458,7 +460,8 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
       return;
     }
     try {
-      if (!feedDecided) html.setAttribute("data-mfga-feed", "pending");
+      // Signed out there is nothing to wait for: "pending" would hide the login page's own [role=main].
+      if (!feedDecided) html.setAttribute("data-mfga-feed", signedOut ? "native" : "pending");
       await harvest?.ready?.catch?.(() => {});
       const ours = await canUseOurFeed();
       feedDecided = true;
@@ -472,6 +475,7 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
       const key = feedSignature(spec, S());
       if (!feedView || feedKey !== key) buildFeedView(spec, key);
       mountFeed();
+      noteBaseColumn();
       html.setAttribute("data-mfga-feed", "ours");
       health.fact("feed", "ours");
     } catch (err) {
@@ -509,6 +513,7 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
     () => {
       if (route.mode === "home" && document.documentElement.getAttribute("data-mfga-feed") === "ours") mountFeed();
       mountHaltNotice();
+      noteBaseColumn();
       // The push view closed without a URL change, or Facebook turned it into a page of its own.
       pushGoneTicks = pushBase && !pushViewOpen() ? pushGoneTicks + 1 : 0;
       if (pushGoneTicks >= 2) releasePushView();
@@ -533,12 +538,13 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
     const fromFeed = base.mode === "home" || base.mode === "groups-feed";
     // A photo opened over Home or the groups feed: Facebook keeps that page mounted under its viewer, and so
     // do we, instead of tearing the page down and rebuilding it when the viewer closes.
-    if (next.mode === "page" && fromFeed && pushViewOpen()) {
+    if (next.mode === "page" && fromFeed && overBase()) {
       keepUnderPushView(base);
       watchPushView(base);
       return;
     }
     pushBase = null;
+    baseWatch?.disconnect();
     showRoute(next, { restore: performance.now() - lastTraversal < TRAVERSAL_MS });
     if (next.mode === "page" && fromFeed) watchPushView(base);
   }
@@ -559,16 +565,34 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
     });
   }
 
+  /**
+   * Notes Facebook's column while Home or the groups feed is on screen at its own URL. A push view keeps that
+   * very element mounted under its viewer; a page of its own replaces it.
+   */
+  function noteBaseColumn() {
+    if (pushBase || (route.mode !== "home" && route.mode !== "groups-feed") || classifyRoute().mode !== route.mode) return;
+    baseColumn = findMain() ?? baseColumn;
+  }
+
+  /** A push view is open over the feed page we left (not just any wide dialog over the page after it). */
+  const overBase = () => pushViewOpen() && !!baseColumn?.isConnected;
+
   function keepUnderPushView(base) {
     const relayout = route !== base; // the viewer showed up after we had laid the page out for its own URL
     pushBase = base;
     pushGoneTicks = 0;
+    // A link in the viewer can lead to another page while the viewer is still up: hand over the moment that
+    // page replaces the one kept under it, before it is drawn with this one's layout (and our stream in it).
+    baseWatch ??= new MutationObserver(safe("feed.remount", () => pushBase && !baseColumn?.isConnected && releasePushView(), { disableOnError: false }));
+    baseWatch.observe(document.body || document.documentElement, { childList: true, subtree: true });
     if (relayout) showRoute(base, { restore: true });
+    else applyRootAttributes(S()); // the URL is the viewer's: a media route leaves Facebook's dark viewer alone
   }
 
   function releasePushView() {
     pushBase = null;
     pushGoneTicks = 0;
+    baseWatch?.disconnect();
     showRoute(classifyRoute());
   }
 
@@ -583,7 +607,7 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
       setTimeout(() => {
         if (routeKey() !== key) return;
         if (!pushBase) {
-          if (route.mode === "page" && pushViewOpen()) keepUnderPushView(base);
+          if (route.mode === "page" && overBase()) keepUnderPushView(base);
           return;
         }
         gone = pushViewOpen() ? 0 : gone + 1;

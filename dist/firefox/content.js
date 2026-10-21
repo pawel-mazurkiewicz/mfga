@@ -1103,9 +1103,10 @@ ${P("summary")}, ${P("comments")}, ${P("composer")} {
   background: #EDEFF4 !important; margin: 2px var(--mfga-pad) 0 calc(var(--mfga-indent) + var(--mfga-pad)) !important; border: 0 !important; border-radius: 0 !important;
 }
 ${P("summary")} { padding: 5px !important; justify-content: flex-start !important; gap: 0 12px !important; }
-/* 2010 order: "Like · Comment · Share" first, then the light-blue box (likes, comments, composer). */
+/* 2010 order: "Like · Comment · Share" first, then the light-blue box (likes, comments, composer). Only the links
+   move: whatever else the footer holds (the comments, the comment box) keeps Facebook's order after the likes. */
 ${P("footer")} { display: flex !important; flex-direction: column !important; }
-${P("footer")} > ${IN("summary")} { order: 1; }
+${P("footer")} > ${IN("actions")} { order: -1; }
 ${P("actions")} ${IN("summary")} { flex: 1 1 100% !important; margin-left: 0 !important; }
 ${P("summary")}, ${P("summary")} *, ${P("comments")}, ${P("comments")} *, ${P("composer")} * {
   font-size: 11px !important; line-height: 14px !important;
@@ -1174,6 +1175,8 @@ ${skinRules()}`;
   var S2 = "#mfga-shell";
   var FOOTER_HEIGHT = 70;
   var COLUMN_ROUTES = ['html[data-mfga-route="home"]', 'html[data-mfga-route="groups-feed"]'];
+  var CHAT_TAB = { right: 15, width: 200 };
+  var GROUPS_CHAT_MIN = 2 * (GRID.wide.x + GRID.wide.w) - GRID.page + 2 * (CHAT_TAB.right + CHAT_TAB.width);
   var onColumns = (sel) => COLUMN_ROUTES.map((r) => `${r} ${sel}`).join(",");
   function facebookCss() {
     const g = GRID;
@@ -1209,6 +1212,7 @@ ${S2} .mfga-shell-sep{left:${g.left.w}px;width:1px;z-index:0;background:#CCC}
 ${S2} .mfga-shell-rule{left:${g.rule}px;width:1px;z-index:0;background:#EDEDED}
 html[data-mfga-route="page"] ${S2} :is(.mfga-shell-backdrop,.mfga-shell-sep,.mfga-shell-rule,.mfga-shell-left,.mfga-shell-right,.mfga-chat-tab),
 html[data-mfga-route="groups-feed"] ${S2} :is(.mfga-shell-rule,.mfga-shell-right){display:none}
+@media (max-width:${GROUPS_CHAT_MIN - 0.02}px){html[data-mfga-route="groups-feed"] ${S2} .mfga-chat-tab{display:none}}
 `;
   }
   function headerCss() {
@@ -1313,7 +1317,9 @@ ${S2} .mfga-chat-tab:hover{background:linear-gradient(#FFF,#E5E5E5)}
   }
   function chatHeadCss(settings) {
     if (settings?.look?.chat === false) return "";
-    return `${onColumns(':is([aria-label="New message"],[aria-label="Nowa wiadomość"])[role="button"]:not([role="dialog"] *)')}{display:none!important}
+    const head = ':is([aria-label="New message"],[aria-label="Nowa wiadomość"])[role="button"]:not([role="dialog"] *)';
+    return `html[data-mfga-route="home"] ${head}{display:none!important}
+@media (min-width:${GROUPS_CHAT_MIN}px){html[data-mfga-route="groups-feed"] ${head}{display:none!important}}
 `;
   }
   function shellCss(settings) {
@@ -1326,6 +1332,9 @@ ${S2} .mfga-chat-tab:hover{background:linear-gradient(#FFF,#E5E5E5)}
   var rootRules = `
 .mfga-stream *,.mfga-story,.mfga-story *,.mfga-stream *::before,.mfga-stream *::after{box-sizing:border-box}
 .mfga-stream img{max-width:none}
+/* Without the 2010 layout the stream sits in Facebook's own home column, a centred flex row: give it the width of
+   Facebook's feed rather than its content's. */
+html:not([data-mfga-shell]) #mfga-stream{flex:none;width:680px;max-width:100%;margin-left:auto;margin-right:auto}
 .mfga-linkbtn{display:inline;margin:0;padding:0;border:0;background:none;font:inherit;line-height:inherit;color:${BLUE};text-align:left;cursor:pointer}
 .mfga-linkbtn:hover{text-decoration:underline}
 .mfga-time{color:#808080;text-decoration:none;border:0;cursor:inherit}
@@ -1437,7 +1446,7 @@ ${S2} .mfga-chat-tab:hover{background:linear-gradient(#FFF,#E5E5E5)}
 .mfga-stream .mfga-welcome-steps{flex:1;min-width:0;margin:6px 0 0;padding:0;list-style:none}
 .mfga-welcome-step{display:flex;align-items:flex-start;margin:0 0 10px;line-height:14px}
 .mfga-welcome-step:last-child{margin-bottom:0}
-html[data-mfga-shell] .mfga-welcome-plain,html:not([data-mfga-shell]) .mfga-welcome-shell{display:none}
+html[data-mfga-shell] .mfga-welcome-plain,html:not([data-mfga-shell]) :is(.mfga-welcome-shell,.mfga-welcome-m3){display:none}
 .mfga-welcome-num{flex:none;width:15px;height:16px;margin-right:8px;background:#A6B2CA;color:#fff;font-weight:bold;line-height:16px;text-align:center}
 .mfga-welcome-learn{display:inline-block;margin-top:12px;font-size:13px;font-weight:bold;line-height:16px}
 .mfga-welcome-arrow{display:inline-block;width:0;height:0;margin:0 0 2px 5px;border-left:4px solid ${BLUE};border-top:4px solid transparent;border-bottom:4px solid transparent;vertical-align:middle}
@@ -4196,6 +4205,8 @@ ${docId}`;
   var CONTACTS_FRESH_MS = 10 * 60 * 1e3;
   var REFRESH_GAP_MS = 400;
   var RESCAN_MS = 2e3;
+  var FIRST_SCAN_MS = 150;
+  var FIRST_SCAN_FOR_MS = 1e4;
   var ACCOUNT_NAV = /* @__PURE__ */ new Set(["account controls and settings", "mechanizmy kontrolne i ustawienia konta"]);
   var SHORTCUTS_NAV = /* @__PURE__ */ new Set(["shortcuts", "skróty"]);
   var JEWELS = {
@@ -4487,6 +4498,7 @@ ${docId}`;
     let observer2 = null;
     let targets = [];
     let rescanTimer = 0;
+    let firstTimer = 0;
     let refreshTimer = 0;
     let lastRefresh = 0;
     let persistTimer = 0;
@@ -4583,18 +4595,30 @@ ${docId}`;
       }
       return true;
     };
+    const complete = () => targets.length >= (onRailRoute() ? 3 : 1);
+    const scan = () => {
+      if (retarget()) scheduleRefresh();
+    };
     const start = () => {
       observer2 = new MutationObserver(scheduleRefresh);
-      retarget();
-      rescanTimer = setInterval(() => {
-        if (retarget()) scheduleRefresh();
-      }, RESCAN_MS);
+      scan();
+      const firstUntil = Date.now() + FIRST_SCAN_FOR_MS;
+      firstTimer = complete() ? 0 : setInterval(() => {
+        scan();
+        if (complete() || Date.now() > firstUntil) {
+          clearInterval(firstTimer);
+          firstTimer = 0;
+        }
+      }, FIRST_SCAN_MS);
+      rescanTimer = setInterval(scan, RESCAN_MS);
     };
     const stop = () => {
       observer2?.disconnect();
       observer2 = null;
       targets = [];
       clearInterval(rescanTimer);
+      clearInterval(firstTimer);
+      firstTimer = 0;
       clearTimeout(refreshTimer);
       refreshTimer = 0;
     };
@@ -4802,7 +4826,8 @@ ${docId}`;
   var HIDE_ATTR = "data-mfga-hide";
   var BOTTOM_GUARD_PX = 1200;
   var STORIES_SELECTOR = '[data-focus-target="stories_tray"]';
-  var RAIL_AD_LINK = 'a[target^="rhcad"], a[attributionsrc*="/privacy_sandbox/"]';
+  var RAIL_AD_LINK = 'a[target^="rhcad"], a[attributionsrc*="/privacy_sandbox/"][attributionsrc*="eid="]';
+  var HEADINGS = 'h2, h3, [role="heading"]';
   var MAX_TRIES = 8;
   var XLINK = "http://www.w3.org/1999/xlink";
   var REASON_SETTINGS = {
@@ -5082,15 +5107,18 @@ ${docId}`;
     const blocks = /* @__PURE__ */ new Set();
     for (const a of selfAndBelow(node, RAIL_AD_LINK)) {
       const rail = a.closest('[role="complementary"]');
-      if (!rail) continue;
+      if (!rail || rail.closest('[role="dialog"]')) continue;
       let block3 = a;
-      for (let el = a.parentElement; el && el !== rail; el = el.parentElement) {
-        if (el.querySelectorAll("h3").length > 1 || [...el.querySelectorAll("a[href]")].some((x) => !x.matches(RAIL_AD_LINK))) break;
-        block3 = el;
-      }
+      for (let el = a.parentElement; el && el !== rail && !holdsOtherCard(el, a); el = el.parentElement) block3 = el;
       blocks.add(block3);
     }
     return [...blocks];
+  }
+  function holdsOtherCard(el, a) {
+    const headings = el.querySelectorAll(HEADINGS);
+    if (headings.length > 1 || headings.length === 1 && a.compareDocumentPosition(headings[0]) & Node.DOCUMENT_POSITION_FOLLOWING) return true;
+    const ads = el.querySelectorAll(RAIL_AD_LINK).length;
+    return [...el.querySelectorAll("a[href]")].some((x) => !x.matches(RAIL_AD_LINK)) || el.querySelectorAll('[role="button"]').length > ads;
   }
   function observedLabels(unit) {
     const button = (role) => unit.querySelector(`[data-ad-rendering-role="${role}"]`)?.closest('[role="button"]')?.getAttribute("aria-label");
@@ -5119,6 +5147,7 @@ ${docId}`;
     const dirtyUnits = /* @__PURE__ */ new Set();
     const dirtyBlocks = /* @__PURE__ */ new Set();
     const dirtyRailAds = /* @__PURE__ */ new Set();
+    const railMarks = /* @__PURE__ */ new Set();
     const stats = { seen: 0, hidden: 0, skeletons: 0, virtualized: 0, undecodable: 0, reasons: {}, signals: {}, probe: {} };
     let statsTimer = 0;
     function snapshot() {
@@ -5238,9 +5267,18 @@ ${docId}`;
       return decisions;
     }
     function processRailAd(block3) {
-      if (!block3.isConnected) return null;
+      railMarks.delete(block3);
+      if (!block3.isConnected) return [];
+      const now = railAdBlocks(block3);
+      if (now.length === 1 && now[0] === block3) return [railDecision(block3)];
+      return [{ owner: block3, target: block3, verdict: null }, ...now.map(railDecision)];
+    }
+    function railDecision(block3) {
       const verdict = chooseVerdict([{ reason: "sponsored", signal: "rail" }], current(), feedRoute);
-      if (verdict && !block3.hasAttribute(HIDE_ATTR)) health.count("clean.rail-ad");
+      if (verdict) {
+        if (!block3.hasAttribute(HIDE_ATTR)) health.count("clean.rail-ad");
+        railMarks.add(block3);
+      }
       return { owner: block3, target: block3, verdict, counts: false, unguarded: true };
     }
     function collect(node) {
@@ -5249,6 +5287,7 @@ ${docId}`;
       for (const u of node.matches(UNIT_SELECTOR) ? [node] : node.querySelectorAll(UNIT_SELECTOR)) dirtyUnits.add(u);
       for (const b of storyBlocks(node)) dirtyBlocks.add(b);
       for (const b of railAdBlocks(node)) dirtyRailAds.add(b);
+      for (const b of railMarks) if (b.contains(node)) dirtyRailAds.add(b);
     }
     const flush = rafBatch(
       safe("cleaner", () => {
@@ -5263,10 +5302,7 @@ ${docId}`;
           if (d) decisions.push(d);
         }
         for (const b of dirtyBlocks) decisions.push(...processBlock(b));
-        for (const b of dirtyRailAds) {
-          const d = processRailAd(b);
-          if (d) decisions.push(d);
-        }
+        for (const b of dirtyRailAds) decisions.push(...processRailAd(b));
         dirtyUnits.clear();
         dirtyBlocks.clear();
         dirtyRailAds.clear();
@@ -5289,7 +5325,7 @@ ${docId}`;
     function reapplyAll() {
       for (const unit of doc.querySelectorAll(UNIT_SELECTOR)) dirtyUnits.add(unit);
       for (const block3 of storyBlocks(doc.body)) dirtyBlocks.add(block3);
-      for (const block3 of railAdBlocks(doc.body)) dirtyRailAds.add(block3);
+      for (const block3 of [...railMarks, ...railAdBlocks(doc.body)]) dirtyRailAds.add(block3);
       flush();
     }
     const unsubscribe = typeof settings?.subscribe === "function" ? settings.subscribe(() => reapplyAll()) : null;
@@ -5317,6 +5353,7 @@ ${docId}`;
         dirtyUnits.clear();
         dirtyBlocks.clear();
         dirtyRailAds.clear();
+        railMarks.clear();
         for (const el of doc.querySelectorAll(`[${HIDE_ATTR}]`)) el.removeAttribute(HIDE_ATTR);
       },
       stats: snapshot
@@ -8446,6 +8483,8 @@ ${docId}`;
     let haltNotice = null;
     let pushBase = null;
     let pushGoneTicks = 0;
+    let baseColumn = null;
+    let baseWatch = null;
     let settling = 0;
     let homeY = 0;
     let lastTraversal = -Infinity;
@@ -8616,7 +8655,7 @@ ${docId}`;
         return;
       }
       try {
-        if (!feedDecided) html.setAttribute("data-mfga-feed", "pending");
+        if (!feedDecided) html.setAttribute("data-mfga-feed", signedOut ? "native" : "pending");
         await harvest?.ready?.catch?.(() => {
         });
         const ours = await canUseOurFeed();
@@ -8631,6 +8670,7 @@ ${docId}`;
         const key = feedSignature(spec, S3());
         if (!feedView || feedKey !== key) buildFeedView(spec, key);
         mountFeed();
+        noteBaseColumn();
         html.setAttribute("data-mfga-feed", "ours");
         health.fact("feed", "ours");
       } catch (err) {
@@ -8659,6 +8699,7 @@ ${docId}`;
       () => {
         if (route.mode === "home" && document.documentElement.getAttribute("data-mfga-feed") === "ours") mountFeed();
         mountHaltNotice();
+        noteBaseColumn();
         pushGoneTicks = pushBase && !pushViewOpen() ? pushGoneTicks + 1 : 0;
         if (pushGoneTicks >= 2) releasePushView();
       },
@@ -8675,12 +8716,13 @@ ${docId}`;
     function onRoute(next) {
       const base = pushBase || route;
       const fromFeed = base.mode === "home" || base.mode === "groups-feed";
-      if (next.mode === "page" && fromFeed && pushViewOpen()) {
+      if (next.mode === "page" && fromFeed && overBase()) {
         keepUnderPushView(base);
         watchPushView(base);
         return;
       }
       pushBase = null;
+      baseWatch?.disconnect();
       showRoute(next, { restore: performance.now() - lastTraversal < TRAVERSAL_MS });
       if (next.mode === "page" && fromFeed) watchPushView(base);
     }
@@ -8698,15 +8740,24 @@ ${docId}`;
         if (returning && view && feedView === view) settleReturn(restore ? homeY : 0);
       });
     }
+    function noteBaseColumn() {
+      if (pushBase || route.mode !== "home" && route.mode !== "groups-feed" || classifyRoute().mode !== route.mode) return;
+      baseColumn = findMain() ?? baseColumn;
+    }
+    const overBase = () => pushViewOpen() && !!baseColumn?.isConnected;
     function keepUnderPushView(base) {
       const relayout = route !== base;
       pushBase = base;
       pushGoneTicks = 0;
+      baseWatch ??= new MutationObserver(safe("feed.remount", () => pushBase && !baseColumn?.isConnected && releasePushView(), { disableOnError: false }));
+      baseWatch.observe(document.body || document.documentElement, { childList: true, subtree: true });
       if (relayout) showRoute(base, { restore: true });
+      else applyRootAttributes(S3());
     }
     function releasePushView() {
       pushBase = null;
       pushGoneTicks = 0;
+      baseWatch?.disconnect();
       showRoute(classifyRoute());
     }
     function watchPushView(base) {
@@ -8716,7 +8767,7 @@ ${docId}`;
         setTimeout(() => {
           if (routeKey() !== key) return;
           if (!pushBase) {
-            if (route.mode === "page" && pushViewOpen()) keepUnderPushView(base);
+            if (route.mode === "page" && overBase()) keepUnderPushView(base);
             return;
           }
           gone = pushViewOpen() ? 0 : gone + 1;

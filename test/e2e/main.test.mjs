@@ -279,6 +279,51 @@ describe("MFGA userscript: wiring (src/main.js)", { skip: !hasUserscript() && `n
       });
       assert.equal(rail.ads, 0, "no right-column ad on screen");
       assert.deepEqual(rail.headings, ["Birthdays", "Contacts", "Group chats"], "the rest of the column stays");
+      // Facebook's column is a centred flex row: the stream takes a feed column's width, not its content's.
+      await page.setViewportSize({ width: 1920, height: 1000 });
+      const width = () => page.evaluate(() => Math.round(document.getElementById("mfga-stream").getBoundingClientRect().width));
+      assert.equal(await width(), 680, "a feed column's width on a wide window");
+      assert.equal(await page.locator(".mfga-welcome-m3").isVisible(), false, "the welcome miniature points at no 2010 Account menu");
+      await page.locator(".mfga-welcome-close").click();
+      assert.equal(await width(), 680, "closing the welcome box does not resize the stream");
+      assert.deepEqual(errors, []);
+    });
+  });
+
+  test("signed out, the login page's own [role=main] is not hidden while the page loads", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p, errors) => {
+      await p.b.context.clearCookies();
+      const page = await p.b.context.newPage();
+      let release;
+      const slow = new Promise((resolve) => (release = resolve));
+      await page.route("https://www.facebook.com/slow.js", async (route) => {
+        await slow; // a parser-blocking bundle still downloading
+        await route.fulfill({ status: 200, contentType: "text/javascript", body: "" });
+      });
+      await page.route(
+        (u) => u.hostname === "www.facebook.com" && u.pathname === "/",
+        (route) =>
+          route.fulfill({
+            status: 200,
+            contentType: "text/html; charset=utf-8",
+            // The 2026 logged-out "/": the login form, then one [role=main] with the language list and footer links.
+            body: '<!doctype html><html lang="en"><head><title>Facebook - log in or sign up</title></head><body><div id="mount_0_0_Ab"><form id="login_form"><input name="email"><button>Log in</button></form><div role="main"><div>English (US) · Polski</div><div><a href="/r.php">Sign Up</a></div></div></div><script src="/slow.js"></script></body></html>',
+          }),
+      );
+      const loaded = page.goto("https://www.facebook.com/");
+      await page.waitForSelector('[role="main"]', { state: "attached" });
+      await page.waitForFunction(() => document.documentElement.hasAttribute("data-mfga"), null, { timeout: 10000 });
+      await page.waitForTimeout(1000);
+      const during = await page.evaluate(() => ({
+        loading: document.readyState === "loading",
+        feed: document.documentElement.getAttribute("data-mfga-feed"),
+        hidden: [...document.querySelector('[role="main"]').children].filter((c) => getComputedStyle(c).visibility === "hidden").length,
+      }));
+      release();
+      await loaded;
+      assert.equal(during.loading, true, "measured while the page was still loading");
+      assert.notEqual(during.feed, "pending");
+      assert.equal(during.hidden, 0, "the language list and footer links are on screen");
       assert.deepEqual(errors, []);
     });
   });
@@ -393,6 +438,121 @@ describe("MFGA userscript: wiring (src/main.js)", { skip: !hasUserscript() && `n
       await page.waitForFunction(() => location.pathname === "/photos/" && document.documentElement.getAttribute("data-mfga-route") === "page", null, { timeout: 5000 });
       assert.equal(await feedAttr(page), null);
       assert.ok(!(await page.evaluate(() => document.getElementById("mfga-stream")?.isConnected)), "our stream is out of Facebook's page");
+      assert.deepEqual(errors, []);
+    });
+  });
+
+  test("a link in the photo viewer while it stays up for the next page: that page is never drawn as Home", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p, errors) => {
+      const page = await p.open("/");
+      await waitStories(page, 10);
+      // The album page takes a while to load, and the fake Comet keeps its viewer up until it is in place.
+      await page.route(
+        (u) => u.pathname === "/photos/",
+        async (route, request) => {
+          if (request.resourceType() === "fetch") await new Promise((r) => setTimeout(r, 1200));
+          return route.fallback();
+        },
+      );
+      const photo = page.locator("#mfga-stream a.mfga-att-photo").first();
+      await photo.scrollIntoViewIfNeeded();
+      await photo.click();
+      await page.waitForSelector("[data-fake-push-view]", { timeout: 10000 });
+      await page.waitForFunction(() => document.documentElement.getAttribute("data-mfga-route") === "home", null, { timeout: 5000 });
+      // What every frame shows from here on.
+      await page.evaluate(() => {
+        window.__frames = [];
+        const step = () => {
+          const main = document.querySelector('[role="main"]:not([role="dialog"] *)');
+          window.__frames.push({
+            path: location.pathname,
+            viewer: !!document.querySelector("[data-fake-push-view]"),
+            route: document.documentElement.getAttribute("data-mfga-route"),
+            stream: !!document.getElementById("mfga-stream")?.getClientRects().length,
+            content: main ? [...main.children].filter((c) => !c.matches(".mfga-ui") && c.getClientRects().length).length : 0,
+          });
+          if (window.__frames.length < 600) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      });
+      await page.locator("[data-fake-push-view] a").click();
+      await page.waitForFunction(() => location.pathname === "/photos/" && !document.querySelector("[data-fake-push-view]"), null, { timeout: 10000 });
+      await page.waitForTimeout(2500);
+      const frames = await page.evaluate(() => window.__frames);
+      assert.ok(frames.filter((f) => f.path === "/photos/" && f.viewer).length > 10, "the viewer stayed up while the page loaded");
+      const drawn = frames.filter((f) => f.path === "/photos/" && !f.viewer);
+      assert.ok(drawn.length > 10, `frames of the album page (${drawn.length})`);
+      const wrong = drawn.filter((f) => f.route === "home" || f.stream || !f.content);
+      assert.equal(wrong.length, 0, `from its first frame the album page has its own layout and content, and no stream of ours (wrong: ${JSON.stringify(wrong[0])} …)`);
+      assert.equal(await feedAttr(page), null);
+      assert.deepEqual(errors, []);
+    });
+  });
+
+  test("a photo viewer already up when the URL change is seen leaves Facebook's dark viewer un-themed", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p, errors) => {
+      const page = await p.open("/");
+      await waitStories(page, 10);
+      const themed = () => page.evaluate(() => document.documentElement.hasAttribute("data-mfga-theme"));
+      assert.equal(await themed(), true);
+      // Comet's own photo link: pushState (no popstate: MFGA sees it on its next poll) with the viewer up at
+      // once, and <html> forced dark while it is open.
+      await page.evaluate(() => {
+        history.pushState(history.state, "", "/photo/?fbid=501&set=a.1");
+        const viewer = document.createElement("div");
+        viewer.setAttribute("role", "dialog");
+        viewer.setAttribute("aria-label", "Photo viewer");
+        viewer.id = "test-viewer";
+        viewer.style.cssText = "position:fixed;inset:0;z-index:5;background:#000";
+        document.querySelector('div[id^="mount_0_0"]').append(viewer);
+        document.documentElement.classList.add("__fb-dark-mode");
+      });
+      await page.waitForTimeout(1500);
+      assert.equal(await page.evaluate(() => document.documentElement.getAttribute("data-mfga-route")), "home", "Home stays under the viewer");
+      assert.equal(await themed(), false, "a media route: the 2010 theme stays off the dark viewer");
+
+      await page.evaluate(() => {
+        document.getElementById("test-viewer").remove();
+        document.documentElement.classList.remove("__fb-dark-mode");
+      });
+      await page.goBack();
+      await page.waitForFunction(() => location.pathname === "/", null, { timeout: 10000 });
+      await page.waitForTimeout(500);
+      assert.equal(await themed(), true, "Home is themed again");
+      assert.deepEqual(errors, []);
+    });
+  });
+
+  test("a dialog that opens on the page after Home (no URL change) does not bring Home back over that page", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p, errors) => {
+      const first = await p.open("/");
+      await first.evaluate((key) => localStorage.setItem(key, JSON.stringify({ look: { shell: false } })), SETTINGS_KEY);
+      await first.close();
+      const page = await p.open("/");
+      await waitStories(page, 5);
+      await page.locator("#mfga-stream a.mfga-story-actor:not(.mfga-story-target)").first().click();
+      await page.waitForFunction(() => location.pathname !== "/" && !document.documentElement.hasAttribute("data-mfga-feed"), null, { timeout: 10000 });
+      await page.waitForTimeout(300);
+      // A wide centred modal inside Facebook's root (where the app view stack puts its portals), well within the
+      // time a late photo viewer is looked for.
+      await page.evaluate(() => {
+        const d = document.createElement("div");
+        d.setAttribute("role", "dialog");
+        d.style.cssText = "position:fixed;left:50%;top:120px;width:548px;height:400px;margin-left:-274px;background:#fff;z-index:5";
+        document.querySelector('div[id^="mount_0_0"]').append(d);
+      });
+      await page.waitForTimeout(2000);
+      const r = await page.evaluate(() => {
+        const main = document.querySelector('[role="main"]:not([role="dialog"] *)');
+        return {
+          feed: document.documentElement.getAttribute("data-mfga-feed"),
+          stream: !!document.getElementById("mfga-stream")?.isConnected,
+          shown: [...main.children].filter((c) => c.getClientRects().length && getComputedStyle(c).visibility !== "hidden").length,
+        };
+      });
+      assert.equal(r.feed, null, "Home is not put back");
+      assert.equal(r.stream, false, "our stream stays out of the profile's column");
+      assert.ok(r.shown > 0, "the profile's column is on screen");
       assert.deepEqual(errors, []);
     });
   });

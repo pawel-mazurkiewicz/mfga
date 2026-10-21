@@ -90,7 +90,8 @@
   // ---- push views -----------------------------------------------------------------------------------------
   // A photo opened from Home is a "push view": the URL changes, a full-viewport dialog is layered over the
   // page and the page underneath stays mounted (scroll position included); Back closes the dialog without
-  // re-rendering. Comet loads the viewer first, so the dialog appears a moment after the URL changes.
+  // re-rendering. Comet loads the viewer first, so the dialog appears a moment after the URL changes; likewise a
+  // link out of the viewer changes the URL at once and the viewer stays up until the next page is in place.
   const PUSH_VIEW_PATH = /^\/photo(\/|\.php|$)/;
   const PUSH_VIEW_DELAY_MS = 350;
   const HOME_PATHS = new Set(["/", "/home.php"]);
@@ -140,7 +141,9 @@
       closePushView();
       return true;
     }
-    closePushView();
+    // Anywhere else (a link out of the viewer): a viewer on screen stays up until the next page is ready.
+    clearTimeout(pushTimer);
+    pushTimer = 0;
     return false;
   }
 
@@ -155,6 +158,7 @@
     const doc = new DOMParser().parseFromString(html, "text/html");
     const fresh = doc.querySelector('div[id^="mount_0_0"]');
     if (!fresh) return;
+    closePushView();
     root().replaceChildren(...[...fresh.childNodes].map((n) => document.importNode(n, true)));
     document.title = doc.title;
     for (const s of doc.querySelectorAll('script[type="application/json"][data-sjs]')) document.body.appendChild(document.importNode(s, true));

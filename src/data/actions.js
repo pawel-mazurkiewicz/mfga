@@ -252,7 +252,7 @@ export function createActions({ client, ops, harvest, extractComment = realExtra
         if (!res) return { ...empty, error: "unavailable" };
         const connection = res.data?.node?.comment_rendering_instance_for_feed_location?.comments;
         const failed = failedKind(res, connection);
-        if (failed) return { ...failure("comments", { kind: failed }), comments: [], cursor: cursor ?? null, hasMore: false };
+        if (failed) return { ...empty, ...failure("comments", { kind: failed }) };
         const comments = (Array.isArray(connection?.edges) ? connection.edges : []).map((e) => (e?.node ? extractComment(e.node) : null)).filter(Boolean);
         const info = connection?.page_info;
         return { ok: true, comments, cursor: info?.end_cursor ?? null, hasMore: info?.has_next_page === true };

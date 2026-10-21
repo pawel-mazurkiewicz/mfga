@@ -153,7 +153,8 @@ function storyFrom(node, opts, depth) {
     tracking: str(node.encrypted_tracking) ?? str(v.ufi.encrypted_tracking) ?? str(v.content.encrypted_tracking),
     sources: Array.isArray(opts.sources) ? opts.sources.filter((s) => typeof s === "string") : [],
     audience: extractAudience(v),
-    ai: v.metadata.length ? v.metadata.some(isAiLabel) : Boolean(findInStory(node, isAiLabel)),
+    // Same search as the classifier's hideAI rule, so a hidden-when-on story is badged when it is off.
+    ai: Boolean(findInStory(node, isAiLabel)),
   };
 }
 
@@ -367,6 +368,7 @@ function fillMerge(parts) {
   const out = {};
   for (const part of parts) {
     for (const [key, value] of Object.entries(part)) {
+      if (key === "__proto__") continue; // an own JSON key; assigning it would set out's prototype
       const current = out[key];
       if (current == null || (Array.isArray(current) && !current.length && Array.isArray(value))) out[key] = value;
       else if (isObj(current) && isObj(value)) out[key] = fillMerge([current, value]);

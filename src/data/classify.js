@@ -81,6 +81,7 @@ const AUCTION_KEYS =["sponsored_auction_distance", "the_disan_sonsore_auctigo", 
 const SUSPECT_KEY = /spo|spn|auct|adv/i;
 
 const isObj = (v) => v != null && typeof v === "object" && !Array.isArray(v);
+const nonEmpty = (v) => typeof v === "string" && v !== "";
 
 /** Lowercase hex SHA-256 of a string, via WebCrypto. */
 export async function webCryptoSha256Hex(text) {
@@ -129,7 +130,7 @@ export function createClassifier({ sha256Hex = webCryptoSha256Hex, hideAI = fals
       return drop(`unit:${typename}`);
     }
     const signals = scanStory(node);
-    if (signals.sponsoredData || node.sponsored_data != null) return drop("sponsored-data");
+    if (signals.sponsoredData || SPONSORED_DATA_KEYS.some((key) => node[key] != null)) return drop("sponsored-data");
     const category = await edgeCategory(edge);
     if (category != null && !KEPT_CATEGORIES.has(category)) return drop(`category:${category}`, category);
     if (signals.sponsoredLabel) return drop("sponsored-label", category);

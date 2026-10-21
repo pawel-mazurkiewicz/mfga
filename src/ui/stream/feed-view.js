@@ -95,8 +95,8 @@ export function createFeedView(ctx) {
     if (mode === view.mode) return;
     view.mode = mode;
     renderModes();
-    ctx.onModeChange?.(mode);
-    reload();
+    guard(() => ctx.onModeChange?.(mode))();
+    return reload();
   }
 
   /** Drops the stories and starts again from the first page of a fresh feed. */
@@ -107,7 +107,9 @@ export function createFeedView(ctx) {
     unwatchWithin(list);
     clear(list);
     try {
-      view.feed = ctx.getFeed(view.mode, enabledSources(feedSettings()));
+      const feed = ctx.getFeed(view.mode, enabledSources(feedSettings()));
+      if (typeof feed?.more !== "function") throw new Error("getFeed() returned no feed");
+      view.feed = feed;
     } catch (err) {
       view.error = err;
       renderFooter();
@@ -137,10 +139,11 @@ export function createFeedView(ctx) {
     view.loading = false;
     const first = !view.stories.length;
     appendStories(Array.isArray(stories) ? stories : []);
-    if (first) reportSeen();
-    renderModes();
     renderFooter();
-    renderStatus();
+    // ctx callbacks run guarded: a throwing one must not leave the pager in its loading state.
+    if (first) guard(reportSeen)();
+    renderModes();
+    guard(renderStatus)();
     health.count("stream.page");
     if (sentinel && !feed.exhausted) requestAnimationFrame(guard(() => nearEnd() && loadMore({ auto: true })));
   }
@@ -194,9 +197,12 @@ export function createFeedView(ctx) {
     status.textContent = sentence;
   }
 
-  /** Auto-load: the end of the stream is within AUTOLOAD_PX of the viewport (measured after layout). */
+  /**
+   * Auto-load: the end of the stream is within AUTOLOAD_PX of the viewport (measured after layout). A
+   * stream that is not rendered (display:none on another route) has no client rects and never loads.
+   */
   function nearEnd() {
-    return footer.isConnected && footer.getBoundingClientRect().top < innerHeight + AUTOLOAD_PX;
+    return footer.getClientRects().length > 0 && footer.getBoundingClientRect().top < innerHeight + AUTOLOAD_PX;
   }
 
   function onSentinel(entries) {

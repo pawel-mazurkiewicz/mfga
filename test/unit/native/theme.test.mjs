@@ -26,16 +26,37 @@ test("every overridden token exists in Facebook's fb-light-vars.css", () => {
   assert.deepEqual([...declared].sort(), [...new Set(themeTokenNames())].sort());
 });
 
-test("rules target only the root element, in its light and dark modes", () => {
+test("rules target the root element in both modes and Facebook's light layers, never nested dark islands", () => {
   const rules = parse(themeCss(settings()));
   for (const { selectors } of rules) {
     for (const s of selectors) {
       assert.match(s, /^html\[data-mfga-theme\]/, s);
-      assert.doesNotMatch(s, /\s\.__fb-(dark|light)-mode/, `${s} would override a nested island`);
+      assert.doesNotMatch(s, /\s\.__fb-dark-mode/, `${s} would override a nested dark island`);
     }
   }
   const tokenRule = rules.find((r) => r.decls.has("--web-wash"));
-  assert.deepEqual(tokenRule.selectors, ["html[data-mfga-theme]", "html[data-mfga-theme].__fb-light-mode", "html[data-mfga-theme].__fb-dark-mode"]);
+  assert.deepEqual(tokenRule.selectors, [
+    "html[data-mfga-theme]",
+    "html[data-mfga-theme].__fb-light-mode",
+    "html[data-mfga-theme].__fb-dark-mode",
+    "html[data-mfga-theme] .__fb-light-mode", // portals, dialogs and menus re-declare Facebook's light tokens
+  ]);
+});
+
+test("a dark root renders light: every token Facebook's dark theme changes is declared on it", () => {
+  const FB_DARK = new Map([...readFileSync(new URL("../../fixtures/native/fb-dark-vars.css", import.meta.url), "utf8").matchAll(/^(--[a-z0-9-]+):(.*);$/gm)].map((m) => [m[1], m[2].trim()]));
+  const FB_LIGHT = new Map([...FB_VARS.matchAll(/^(--[a-z0-9-]+):(.*);$/gm)].map((m) => [m[1], m[2].trim()]));
+  const rules = parse(themeCss(settings()));
+  const onDarkRoot = (r) => r.selectors.includes("html[data-mfga-theme].__fb-dark-mode");
+  const base = rules.find((r) => r.selectors.length === 1 && r.selectors[0] === "html[data-mfga-theme].__fb-dark-mode").decls;
+  const declared = new Set(rules.filter(onDarkRoot).flatMap((r) => [...r.decls.keys()]));
+  const changed = [...FB_LIGHT.keys()].filter((k) => FB_DARK.get(k) !== FB_LIGHT.get(k));
+  assert.ok(changed.length > 200);
+  for (const k of changed) assert.ok(declared.has(k), `${k} stays dark on a dark <html>`);
+  for (const [k, v] of base) assert.equal(v, FB_LIGHT.get(k), `${k} takes Facebook's light value`);
+  const tokens2010 = rules.find((r) => r.decls.has("--web-wash")).decls;
+  for (const k of base.keys()) assert.ok(!tokens2010.has(k), `${k} is declared twice on the dark root`);
+  assert.equal(base.get("--fds-white"), "#FFFFFF");
 });
 
 test("2010 palette, square corners and no shadows", () => {

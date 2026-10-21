@@ -1,10 +1,11 @@
 // Facebook theme-token overrides: every Facebook page renders in 2010 colours, fonts and square corners.
 //
 // Facebook declares its tokens on `:root, .__fb-light-mode:root, .__fb-light-mode` (and the dark-mode
-// equivalents) and puts the mode class on <html>. These rules sit on <html> only, with higher
-// specificity, for both root modes (2010 had no dark mode). Nested `.__fb-dark-mode` / `.__fb-light-mode`
-// islands (portals, media viewer) declare their own tokens and keep Facebook's values. Every token name
-// below exists in Facebook's 2026 light theme (test/fixtures/native/fb-light-vars.css, checked by
+// equivalents), puts the mode class on <html> and gives each of its layers (portals, dialogs, menus) its
+// own `.__fb-light-mode` class, which re-declares every token. The 2010 values therefore go on <html> in
+// both root modes (2010 had no dark mode) and on those light layers, with higher specificity. Nested
+// `.__fb-dark-mode` islands (the media viewer) keep Facebook's values. Every token name below exists in
+// Facebook's 2026 light theme (test/fixtures/native/fb-light-vars.css, checked by
 // test/unit/native/theme.test.mjs).
 
 export const FONT_STACKS = Object.freeze({
@@ -351,13 +352,13 @@ function typeTokens(stack) {
 
 /** Every token name themeCss() may write (for the existence test and diagnostics). */
 export function themeTokenNames() {
-  return [...new Set([...Object.keys({ ...COLORS, ...FILTERS, ...LIGHT_BASE, ...RADII, ...SHADOWS }), ...Object.keys(typeTokens(""))])];
+  return [...new Set([...Object.keys({ ...DARK_ROOT_LIGHT, ...COLORS, ...FILTERS, ...RADII, ...SHADOWS }), ...Object.keys(typeTokens(""))])];
 }
 
-/** html[data-mfga-theme]<extra>, with and without Facebook's root mode classes. */
+/** html[data-mfga-theme]<extra>, with and without Facebook's root mode classes, and its light layers. */
 function rootSelector(extra = "") {
   const base = `html[data-mfga-theme]${extra}`;
-  return `${base}, ${base}.__fb-light-mode, ${base}.__fb-dark-mode`;
+  return `${base}, ${base}.__fb-light-mode, ${base}.__fb-dark-mode, ${base} .__fb-light-mode`;
 }
 
 const block = (selector, tokens) =>
@@ -368,7 +369,8 @@ export function themeCss(settings) {
   if (settings?.look?.theme === false) return "";
   const font = FONT_STACKS[settings?.look?.font] ? settings.look.font : "lucida";
   return [
-    block(rootSelector(), { ...LIGHT_BASE, ...COLORS, ...FILTERS, ...RADII, ...SHADOWS, ...typeTokens(FONT_STACKS[font]) }),
+    block("html[data-mfga-theme].__fb-dark-mode", DARK_ROOT_LIGHT),
+    block(rootSelector(), { ...COLORS, ...FILTERS, ...RADII, ...SHADOWS, ...typeTokens(FONT_STACKS[font]) }),
     // html[data-mfga-font] (set at runtime) wins over the stored setting.
     ...Object.entries(FONT_STACKS).map(([name, stack]) =>
       block(rootSelector(`[data-mfga-font="${name}"]`), Object.fromEntries(Object.entries(typeTokens(stack)).filter(([k]) => k.endsWith("font-family")))),

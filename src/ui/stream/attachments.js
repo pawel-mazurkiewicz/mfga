@@ -1,6 +1,6 @@
 // Story attachments in 2010 style: photo thumbnails (grid with "+N"), video poster with a play overlay
 // that swaps in a <video>, link card, event, "Attachment Unavailable".
-import { h } from "../dom.js";
+import { h, safeUrl } from "../dom.js";
 import { icon } from "../icons.js";
 import { t } from "../../shared/i18n.js";
 import { fitBox, formatDuration, photoGrid } from "./format.js";
@@ -42,7 +42,7 @@ function renderPhotos(att, story) {
 function playVideo(thumb, att, src, size) {
   const video = h("video.mfga-att-player", {
     src,
-    poster: att.poster || null,
+    poster: safeUrl(att.poster),
     controls: true,
     autoplay: true,
     preload: "none",

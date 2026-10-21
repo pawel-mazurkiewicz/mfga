@@ -27,24 +27,27 @@ after(async () => {
 /** Two frames plus a tick: enough for the cleaner's and the skin's rAF-batched passes. */
 const settle = (page) => page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 30)))));
 
-async function open(name, { lang = "en", settings = {}, route = { mode: "home" }, start = true } = {}) {
+async function open(name, { start = true, ...opts } = {}) {
   const page = await browser.newPage({ html: fixture(name) });
   await page.addScriptTag({ content: entry });
-  if (start) {
-    await page.evaluate(
-      ([lang, patch, route]) => {
-        const N = window.__mfgaNative;
-        N.setLocale(lang);
-        window.__settings = N.memorySettings(patch);
-        N.installStyle(window.__settings.get());
-        window.__cleaner = N.startCleaner({ settings: window.__settings, route, onStats: (stats) => (window.__lastStats = stats) });
-        window.__skin = N.startSkin({ settings: window.__settings });
-      },
-      [lang, settings, route],
-    );
-    await settle(page);
-  }
+  if (start) await startModules(page, opts);
   return page;
+}
+
+/** Installs the stylesheet and starts the cleaner and the skin the way src/main.js does. */
+async function startModules(page, { lang = "en", settings = {}, route = { mode: "home" } } = {}) {
+  await page.evaluate(
+    ([lang, patch, route]) => {
+      const N = window.__mfgaNative;
+      N.setLocale(lang);
+      window.__settings = N.memorySettings(patch);
+      N.installStyle(window.__settings.get());
+      window.__cleaner = N.startCleaner({ settings: window.__settings, route, onStats: (stats) => (window.__lastStats = stats) });
+      window.__skin = N.startSkin({ settings: window.__settings });
+    },
+    [lang, settings, route],
+  );
+  await settle(page);
 }
 
 function noErrors(page) {
@@ -324,6 +327,115 @@ test("settings changes re-apply verdicts; stop() removes every mark and tag", as
   await page.close();
 });
 
+test("a frame's new junk units are all measured before the first one is hidden (no layout thrash)", async () => {
+  const page = await open("feed.html");
+  const log = await page.evaluate(async () => {
+    const N = window.__mfgaNative;
+    const list = document.getElementById("feed-list");
+    list.prepend(N.cloneSlot("sponsored-shuffled-ad", "ad-a", 61), N.cloneSlot("sponsored-cft-use", "ad-b", 62), N.cloneSlot("suggested-follow", "ad-c", 63));
+    const log = [];
+    const { getBoundingClientRect, setAttribute } = Element.prototype;
+    const getComputedStyle = window.getComputedStyle;
+    Element.prototype.getBoundingClientRect = function (...a) {
+      log.push("read");
+      return getBoundingClientRect.apply(this, a);
+    };
+    window.getComputedStyle = (...a) => (log.push("read"), getComputedStyle(...a));
+    Element.prototype.setAttribute = function (name, value) {
+      if (name === "data-mfga-hide") log.push("write");
+      return setAttribute.call(this, name, value);
+    };
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    Object.assign(Element.prototype, { getBoundingClientRect, setAttribute });
+    window.getComputedStyle = getComputedStyle;
+    return log;
+  });
+  assert.equal(log.filter((e) => e === "write").length, 3);
+  assert.ok(log.lastIndexOf("read") < log.indexOf("write"), `reads and writes interleave: ${log.join(" ")}`);
+  const marks = await page.evaluate(() => ["ad-a", "ad-b", "ad-c"].map((f) => document.querySelector(`[data-fixture="${f}"]`).firstElementChild.getAttribute("data-mfga-hide")));
+  assert.deepEqual(marks, ["sponsored", "sponsored", "suggested"]);
+  noErrors(page);
+  await page.close();
+});
+
+test("stop() wins over a pass already queued for the next frame, and stats stop with it", async () => {
+  const page = await open("feed.html");
+  const r = await page.evaluate(async () => {
+    document.getElementById("feed-list").prepend(window.__mfgaNative.cloneSlot("sponsored-shuffled-ad", "late-ad", 64), window.__mfgaNative.cloneSlot("organic-plain", "late-post", 65));
+    await Promise.resolve(); // the observers have run and queued their passes for the next frame
+    window.__cleaner.stop();
+    window.__skin.stop();
+    window.__lastStats = null;
+    await new Promise((res) => setTimeout(res, 400));
+    return { marks: document.querySelectorAll("[data-mfga-hide], [data-mfga-part], [data-mfga-action]").length, stats: window.__lastStats };
+  });
+  assert.equal(r.marks, 0);
+  assert.equal(r.stats, null, "no onStats call after stop()");
+  noErrors(page);
+  await page.close();
+});
+
+test("onStats keeps reporting while the page mutates every frame", async () => {
+  const page = await open("feed.html");
+  await page.waitForFunction(() => window.__lastStats?.hidden === 11, null, { timeout: 2000 });
+  const hidden = await page.evaluate(async () => {
+    // Like a playing video's time display: a kept post changes on every frame for about two seconds.
+    const text = document.querySelector('[data-fixture="organic-plain"] [data-ad-rendering-role="story_message"] [style]');
+    let n = 0;
+    const tick = () => {
+      text.replaceChildren(`0:${String(n++).padStart(2, "0")}`);
+      if (n < 120) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    document.getElementById("feed-list").prepend(window.__mfgaNative.cloneSlot("sponsored-shuffled-ad", "busy-ad", 66));
+    await new Promise((res) => setTimeout(res, 800));
+    return window.__lastStats.hidden;
+  });
+  assert.equal(hidden, 12);
+  noErrors(page);
+  await page.close();
+});
+
+test("the Stories tray takes only its own labelled region along, never a wider top-of-feed region", async () => {
+  const page = await open("feed.html", { start: false });
+  await page.evaluate(() => {
+    // A cohort where the region around the tray also holds the composer.
+    const region = document.querySelector(".fx-stories-region");
+    region.setAttribute("aria-label", "profile plus top of feed cards");
+    region.prepend(document.querySelector('[aria-label="Create a post"]'));
+  });
+  await startModules(page);
+  const r = await page.evaluate(() => ({
+    tray: document.querySelector('[data-focus-target="stories_tray"]').getAttribute("data-mfga-hide"),
+    region: document.querySelector(".fx-stories-region").getAttribute("data-mfga-hide"),
+    composer: getComputedStyle(document.querySelector('[aria-label="Create a post"]')).display,
+  }));
+  assert.equal(r.tray, "stories");
+  assert.equal(r.region, null);
+  assert.notEqual(r.composer, "none");
+  noErrors(page);
+  await page.close();
+});
+
+test("the skin tags a post whose [aria-posinset] element is itself the inserted node", async () => {
+  const page = await open("feed.html");
+  await page.evaluate(() => {
+    const slot = document.createElement("div");
+    slot.id = "late-slot";
+    document.getElementById("feed-list").prepend(slot);
+  });
+  await settle(page);
+  await page.evaluate(() => {
+    const unit = window.__mfgaNative.cloneSlot("organic-plain", "inserted-unit", 67).querySelector("[aria-posinset]");
+    document.getElementById("late-slot").append(unit);
+  });
+  await settle(page);
+  const parts = await page.evaluate(() => [...document.querySelectorAll('[data-fixture="inserted-unit"] [data-mfga-part]')].map((e) => e.getAttribute("data-mfga-part")));
+  assert.deepEqual(parts, ["avatar", "name", "byline", "message", "footer", "summary", "actions"]);
+  noErrors(page);
+  await page.close();
+});
+
 test("the skin tags every part of a native post", async () => {
   const page = await open("feed.html");
   const r = await page.evaluate(() => {
@@ -423,24 +535,39 @@ test("the theme overrides the root light and dark modes, not nested dark islands
     const root = document.documentElement;
     const island = document.createElement("div");
     island.className = "__fb-dark-mode";
-    document.body.append(island);
+    // Facebook's portals (dialogs, menus) carry their own light class, which re-declares every token.
+    const portal = document.createElement("div");
+    portal.className = "__fb-light-mode";
+    document.body.append(island, portal);
     const tok = (el, name) => getComputedStyle(el).getPropertyValue(name).trim();
     const light = { wash: tok(root, "--web-wash"), link: tok(root, "--blue-link"), radius: tok(root, "--card-corner-radius"), size: tok(root, "--body-font-size"), font: tok(root, "--body-font-family") };
+    const layer = { link: tok(portal, "--blue-link"), radius: tok(portal, "--card-corner-radius"), size: tok(portal, "--body-font-size") };
     root.classList.replace("__fb-light-mode", "__fb-dark-mode");
-    const dark = { wash: tok(root, "--web-wash"), text: tok(root, "--primary-text"), island: tok(island, "--web-wash"), islandText: tok(island, "--primary-text") };
+    const dark = {
+      wash: tok(root, "--web-wash"), text: tok(root, "--primary-text"), white: tok(root, "--fds-white"), glimmer: tok(root, "--glimmer"),
+      island: tok(island, "--web-wash"), islandText: tok(island, "--primary-text"), islandWhite: tok(island, "--fds-white"),
+      portal: tok(portal, "--card-background"),
+    };
     root.setAttribute("data-mfga-font", "tahoma");
-    const tahoma = tok(root, "--body-font-family");
+    const tahoma = { root: tok(root, "--body-font-family"), portal: tok(portal, "--body-font-family") };
     root.removeAttribute("data-mfga-theme");
-    const off = tok(root, "--web-wash");
-    return { light, dark, tahoma, off, bodyFont: getComputedStyle(document.body).fontFamily };
+    const off = { root: tok(root, "--web-wash"), portal: tok(portal, "--blue-link") };
+    return { light, layer, dark, tahoma, off };
   });
   assert.deepEqual(r.light, { wash: "#FFFFFF", link: "#3B5998", radius: "0px", size: "0.8125rem", font: '"lucida grande", tahoma, verdana, arial, sans-serif' });
+  assert.deepEqual(r.layer, { link: "#3B5998", radius: "0px", size: "0.8125rem" }, "Facebook's light layers get the 2010 tokens too");
   assert.equal(r.dark.wash, "#FFFFFF", "2010 had no dark mode: the dark root renders 2010 light");
   assert.equal(r.dark.text, "#333333");
+  assert.equal(r.dark.white, "#FFFFFF", "palette tokens the dark theme blacks out are light again");
+  assert.equal(r.dark.glimmer, "#383B3D");
   assert.equal(r.dark.island, "#1F1F20", "a nested dark island keeps Facebook's own tokens");
   assert.equal(r.dark.islandText, "#F3F4F5");
-  assert.ok(r.tahoma.startsWith("tahoma"));
-  assert.equal(r.off, "#1F1F20", "without data-mfga-theme Facebook's dark token is back");
+  assert.equal(r.dark.islandWhite, "black");
+  assert.equal(r.dark.portal, "#FFFFFF");
+  assert.ok(r.tahoma.root.startsWith("tahoma"));
+  assert.ok(r.tahoma.portal.startsWith("tahoma"));
+  assert.equal(r.off.root, "#1F1F20", "without data-mfga-theme Facebook's dark token is back");
+  assert.notEqual(r.off.portal, "#3B5998");
   noErrors(page);
   await page.close();
 });
@@ -457,6 +584,14 @@ test("Polish page: verdicts, locale probe and 2010 Polish action labels", async 
     return b.textContent;
   });
   assert.equal(like, "Lubię to!");
+  const shared = await page.evaluate(() => {
+    const att = document.querySelector('[data-fixture="shared-pl-addfriend"] [data-mfga-part="attachment"]');
+    return {
+      mask: getComputedStyle(att.querySelector("svg g[mask]")).mask,
+      name: getComputedStyle(att.querySelector('[data-ad-rendering-role="profile_name"] a span')).color,
+    };
+  });
+  assert.deepEqual(shared, { mask: "none", name: "rgb(59, 89, 152)" }, "a shared post's header looks 2010 too");
   await page.screenshot({ path: `${SHOTS}/feed-pl-after.png`, fullPage: true });
   noErrors(page);
   await page.close();

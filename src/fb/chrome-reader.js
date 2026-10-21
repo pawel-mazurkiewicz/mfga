@@ -6,7 +6,7 @@ import { classifyRoute } from "./routes.js";
 import { HOST_ID, findBanner } from "./layout.js";
 
 export const RAIL_KEY = "mfga:rail";
-const RAIL_VERSION = 1;
+const RAIL_VERSION = 2;
 const CONTACTS_FRESH_MS = 10 * 60 * 1000;
 const REFRESH_GAP_MS = 400;
 const RESCAN_MS = 2000;
@@ -23,7 +23,9 @@ const JEWELS = {
   menu: new Set(["menu", "facebook menu", "menu facebooka"]),
 };
 const COUNT_RE = /,\s*[^\d,]*?(\d+)\+?/;
-const PRESENCE_RE = /,\s*(?:active|aktywn\S*|online)(?:\s.*)?$/i;
+const PRESENCE_RE = /,\s*(?:active|aktywn\S*|online)((?:\s.*)?)$/i;
+// "Active 5m ago" / "Aktywny(a) 5 min temu" is the last-active badge, not "online now".
+const AGO_RE = /\b(?:ago|temu)\b/i;
 
 /** "Notifications, 5 unread" → 5, "Wiadomości, nieprzeczytane: 5" → 5, "Notifications" → 0. */
 export function parseCount(label) {
@@ -84,11 +86,12 @@ export function parseBirthdays(text) {
   return null;
 }
 
-/** "Tom Hellier, Active" → {name: "Tom Hellier", online: true}. */
+/** "Tom Hellier, Active" → {name: "Tom Hellier", online: true}; "…, Active 5m ago" → online: false. */
 export function parseContactLabel(label) {
   const s = String(label ?? "").replace(/\s+/g, " ").trim();
-  const online = PRESENCE_RE.test(s);
-  return { name: online ? s.replace(PRESENCE_RE, "").trim() : s, online };
+  const m = PRESENCE_RE.exec(s);
+  if (!m) return { name: s, online: false };
+  return { name: s.slice(0, m.index).trim(), online: !AGO_RE.test(m[1]) };
 }
 
 // First path segments that are Facebook apps/sections, never a person, Page or group.
@@ -121,18 +124,24 @@ export function classifyShortcut(href, base = "https://www.facebook.com/") {
   if (segs.length === 1 && segs[0] === "profile.php" && u.searchParams.get("id")) {
     return { kind: "profile", url: `https://www.facebook.com/profile.php?id=${u.searchParams.get("id")}`, id: u.searchParams.get("id") };
   }
-  if (segs.length === 1 && !RESERVED.has(segs[0].toLowerCase()) && !segs[0].includes(".")) {
+  // Usernames may contain dots ("pat.example"); only the legacy *.php endpoints are not profiles.
+  if (segs.length === 1 && !RESERVED.has(segs[0].toLowerCase()) && !/\.php$/i.test(segs[0])) {
     return { kind: "profile", url: `https://www.facebook.com/${segs[0]}`, id: segs[0] };
   }
   return { kind: "app", url: u.href, path: `/${segs.join("/")}` };
 }
 
-/** Picks a row's name and badge count from its text leaves (["Gaming Club", "12"] → name, 12). */
+/**
+ * Picks a row's name and badge count from its text leaves: ["Gaming Club", "12"] → 12; a meta line such as
+ * "3 new" or "9+ new posts" counts when there is no bare number.
+ */
 export function nameAndCount(leaves) {
   const texts = leaves.map((s) => s.replace(/\s+/g, " ").trim()).filter(Boolean);
   const isCount = (s) => /^\d+\+?$/.test(s);
-  const name = texts.find((s) => !isCount(s) && !/^\d+\s/.test(s)) ?? texts.find((s) => !isCount(s)) ?? texts[0] ?? "";
-  const countText = texts.length > 1 ? texts.find((s) => isCount(s) && s !== name) : null;
+  const leadingCount = (s) => /^\d+\+?\s/.test(s);
+  const name = texts.find((s) => !isCount(s) && !leadingCount(s)) ?? texts.find((s) => !isCount(s)) ?? texts[0] ?? "";
+  const rest = texts.filter((s) => s !== name);
+  const countText = rest.find(isCount) ?? rest.find(leadingCount);
   return { name, count: countText ? parseInt(countText, 10) : 0 };
 }
 
@@ -156,11 +165,17 @@ export function shortcutsFromRows(rows, { userId = null } = {}) {
   return out;
 }
 
+/** The cache when it has this version and belongs to the signed-in account (shared browsers), else null. */
+function usableCache(cached, userId) {
+  if (!cached || cached.v !== RAIL_VERSION) return null;
+  return !userId || cached.userId === userId ? cached : null;
+}
+
 /** Merges live rail data over the cached copy. Cached presence goes stale; cached birthdays only last a day. */
-export function mergeRail(live, cached, now = Date.now()) {
-  const c = cached && cached.v === RAIL_VERSION ? cached : null;
-  const sameDay = c && new Date(c.savedAt).toDateString() === new Date(now).toDateString();
-  const fresh = c && now - c.savedAt < CONTACTS_FRESH_MS;
+export function mergeRail(live, cached, now = Date.now(), userId = null) {
+  const c = usableCache(cached, userId);
+  const sameDay = c && new Date(c.birthdaysAt).toDateString() === new Date(now).toDateString();
+  const fresh = c && now - c.contactsAt < CONTACTS_FRESH_MS;
   const cachedContacts = (c?.contacts || []).map((x) => (fresh ? x : { ...x, online: false }));
   return {
     me: live.me || c?.me || null,
@@ -171,17 +186,23 @@ export function mergeRail(live, cached, now = Date.now()) {
   };
 }
 
-/** What goes to storage: only the parts that were read live this time, over the previous cache. */
-export function railToCache(live, prev, now = Date.now()) {
-  const base = prev && prev.v === RAIL_VERSION ? prev : {};
+/**
+ * What goes to storage: the parts read live this time over the previous cache of the same account. Birthdays
+ * and contacts keep the time they were read, so carrying them over does not make them look fresh.
+ */
+export function railToCache(live, prev, now = Date.now(), userId = null) {
+  const base = usableCache(prev, userId) || {};
   return {
     v: RAIL_VERSION,
+    userId,
     savedAt: now,
     me: live.me || base.me || null,
     groups: live.groups ?? base.groups ?? [],
     pages: live.pages ?? base.pages ?? [],
     birthdays: live.birthdays ?? base.birthdays ?? [],
+    birthdaysAt: live.birthdays ? now : (base.birthdaysAt ?? 0),
     contacts: live.contacts ?? base.contacts ?? [],
+    contactsAt: live.contacts ? now : (base.contactsAt ?? 0),
   };
 }
 
@@ -267,7 +288,8 @@ function readContacts(rail) {
   const out = [];
   for (const a of rail.querySelectorAll('li a[href*="/messages/"], li a[href*="/active/t/"]')) {
     const label = a.getAttribute("aria-label") || a.textContent || "";
-    if (/^meta ai\b/i.test(label.trim()) || a.querySelector('image[href*="/gen-ai"], img[src*="/gen-ai"]')) continue;
+    // The bot's label is localised; its picture (svg <image xlink:href> or <img>) is not.
+    if (/^meta ai\b/i.test(label.trim()) || a.querySelector('image[*|href*="/gen-ai"], img[src*="/gen-ai"]')) continue;
     const { name, online } = parseContactLabel(label);
     if (name) out.push({ name, online, url: a.href, avatar: imageOf(a) });
   }
@@ -291,7 +313,8 @@ export function readCounts(doc = document, railFriendsCount = null) {
   const nav = findAccountNav(doc);
   if (nav) Object.assign(out, countsFromLabels(accountButtons(nav).map((b) => b.getAttribute("aria-label") || "")));
   const banner = findBanner(doc);
-  const friendsTab = banner && [...banner.querySelectorAll('[role="navigation"] a[aria-label]')].find((a) => /^\/friends\/?$/.test(new URL(a.href).pathname));
+  // a.pathname is "" for an href that does not parse, so this never throws.
+  const friendsTab = banner && [...banner.querySelectorAll('[role="navigation"] a[aria-label][href]')].find((a) => /^\/friends\/?$/.test(a.pathname));
   if (friendsTab) out.friendRequests = parseCount(friendsTab.getAttribute("aria-label"));
   else if (railFriendsCount != null) out.friendRequests = railFriendsCount;
   return out;
@@ -299,6 +322,18 @@ export function readCounts(doc = document, railFriendsCount = null) {
 
 // ---------------------------------------------------------------------------------------------------
 // The reader
+
+const STAMPS = new Set(["savedAt", "birthdaysAt", "contactsAt"]);
+/** A cache entry without its timestamps, for change detection. */
+const railContent = (c) => JSON.stringify(c ?? null, (k, v) => (STAMPS.has(k) ? undefined : v));
+
+const EMPTY_SNAP = Object.freeze({
+  identity: { id: null, name: null, url: "https://www.facebook.com/me/", avatar: null },
+  counts: { notifications: null, messages: null, friendRequests: null },
+  shortcuts: { groups: [], pages: [] },
+  birthdays: [],
+  contacts: null,
+});
 
 /**
  * createChromeReader({platform, identityHint?}) — identityHint() may return {id, name} harvested from
@@ -340,14 +375,15 @@ export function createChromeReader({ platform, identityHint = null } = {}) {
     };
   };
 
-  const persist = (liveRail) => {
+  const persist = (liveRail, userId) => {
     if (!storage || (!liveRail.me && liveRail.groups === undefined && liveRail.contacts === undefined)) return;
     clearTimeout(persistTimer);
     persistTimer = setTimeout(() => {
-      const next = railToCache(liveRail, cache);
-      const { savedAt: _a, ...a } = next;
-      const { savedAt: _b, ...b } = cache || {};
-      if (JSON.stringify(a) === JSON.stringify(b)) return;
+      const now = Date.now();
+      const next = railToCache(liveRail, cache, now, userId);
+      // Unchanged data is written again only to keep the presence it carries from going stale.
+      const presenceAging = liveRail.contacts && now - (cache?.contactsAt ?? 0) > CONTACTS_FRESH_MS / 2;
+      if (!presenceAging && railContent(next) === railContent(cache)) return;
       cache = next;
       storage.set(RAIL_KEY, next).catch(() => health.count("shell.rail-cache-write-failed"));
     }, 1000);
@@ -355,9 +391,9 @@ export function createChromeReader({ platform, identityHint = null } = {}) {
 
   const compute = () => {
     const live = readLive();
-    const rail = mergeRail(live.rail, cache);
     const hint = (identityHint && identityHint()) || {};
     const id = live.userId || hint.id || null;
+    const rail = mergeRail(live.rail, cache, Date.now(), id);
     const me = rail.me;
     snap = {
       identity: {
@@ -371,7 +407,7 @@ export function createChromeReader({ platform, identityHint = null } = {}) {
       birthdays: rail.birthdays,
       contacts: rail.contacts,
     };
-    persist(live.rail);
+    persist(live.rail, id);
     return snap;
   };
 
@@ -432,8 +468,10 @@ export function createChromeReader({ platform, identityHint = null } = {}) {
     })
     .catch(() => health.count("shell.rail-cache-read-failed"));
 
-  // While subscribed the snapshot is kept fresh by the observer; otherwise read on demand.
-  const current = () => (observer && snap ? snap : compute());
+  // While subscribed the snapshot is kept fresh by the observer; otherwise read on demand. A failed read
+  // disables the reader (safe) and leaves the last snapshot, so the shell keeps rendering.
+  const read = safe("chrome-reader", compute);
+  const current = () => (observer && snap ? snap : read() || snap || EMPTY_SNAP);
 
   return {
     identity: () => current().identity,

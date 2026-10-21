@@ -37,7 +37,20 @@ function installStyle(settings) {
   document.head.append(style);
 }
 
+/** A fresh copy of a fixture unit's slot (no MFGA marks), renamed `name` at aria-posinset `pos`. */
+function cloneSlot(from, name, pos) {
+  const slot = document.querySelector(`[data-fixture="${from}"]`).closest(".fx-slot").cloneNode(true);
+  for (const el of [slot, ...slot.querySelectorAll("*")]) {
+    for (const a of [...el.attributes]) if (a.name.startsWith("data-mfga")) el.removeAttribute(a.name);
+  }
+  const unit = slot.querySelector("[aria-posinset]");
+  unit.setAttribute("aria-posinset", String(pos));
+  unit.dataset.fixture = name;
+  return slot;
+}
+
 window.__mfgaNative = {
+  cloneSlot,
   startCleaner,
   startSkin,
   themeCss,

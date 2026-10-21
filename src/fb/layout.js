@@ -87,6 +87,18 @@ export function passThroughMarks(anchor, doc = document) {
   return { chain, rails };
 }
 
+/**
+ * Makes `ro` observe the connected elements of `targets` and forget detached ones (Facebook replaces whole
+ * columns on navigation; an observed old [role=main] would keep its feed's DOM alive). Returns the new set.
+ */
+export function syncObserved(ro, observed, targets) {
+  const next = new Set();
+  for (const el of targets) if (el?.isConnected) next.add(el);
+  for (const el of observed) if (!next.has(el)) ro.unobserve(el);
+  for (const el of next) if (!observed.has(el)) ro.observe(el);
+  return next;
+}
+
 export function createLayout({ settings } = {}) {
   const doc = document;
   const html = doc.documentElement;
@@ -133,11 +145,7 @@ export function createLayout({ settings } = {}) {
 
   // Size changes of the viewport, Facebook's root, the main column or our columns move things around.
   const observeTargets = () => {
-    for (const el of [html, mountRoot(doc), main, ...doc.querySelectorAll(`#${HOST_ID} .mfga-shell-col`)]) {
-      if (!el || observed.has(el)) continue;
-      observed.add(el);
-      ro.observe(el);
-    }
+    observed = syncObserved(ro, observed, [html, mountRoot(doc), main, ...doc.querySelectorAll(`#${HOST_ID} .mfga-shell-col`)]);
   };
 
   const round = (n) => Math.round(n * 100) / 100;

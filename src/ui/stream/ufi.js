@@ -211,7 +211,8 @@ export function createFeedback(story, ctx) {
     state.loading = false;
     if (!r.ok) {
       renderViewAll();
-      if (!preview) showError("comments");
+      // A preview fails silently, unless "View all" was clicked while it was loading.
+      if (!preview || state.expandOnLoad) showError("comments");
       health.count("stream.comments-failed");
       return;
     }
@@ -236,7 +237,9 @@ export function createFeedback(story, ctx) {
       oninput: guard(autosize),
       onfocus: guard(() => item.classList.add("mfga-ufi-add-active")),
       onblur: guard(() => {
-        if (!input.value.trim()) item.classList.remove("mfga-ufi-add-active");
+        if (input.value.trim()) return;
+        item.classList.remove("mfga-ufi-add-active");
+        input.style.height = ""; // back to the one-line box (autosize pinned the expanded height)
       }),
     });
     const me = ctx.me || {};

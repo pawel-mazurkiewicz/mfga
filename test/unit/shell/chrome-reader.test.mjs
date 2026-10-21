@@ -80,6 +80,13 @@ test("parseContactLabel strips the presence suffix", () => {
   assert.deepEqual(parseContactLabel("Smith, John"), { name: "Smith, John", online: false });
 });
 
+test("parseContactLabel: a last-active badge is not online", () => {
+  assert.deepEqual(parseContactLabel("Tom Hellier, Active 5m ago"), { name: "Tom Hellier", online: false });
+  assert.deepEqual(parseContactLabel("Jan Kowalski, Aktywny(a) 12 min temu"), { name: "Jan Kowalski", online: false });
+  assert.deepEqual(parseContactLabel("Jan Kowalski, Aktywny(a) teraz"), { name: "Jan Kowalski", online: true });
+  assert.deepEqual(parseContactLabel("Ana Agosto, Active now"), { name: "Ana Agosto", online: true });
+});
+
 test("classifyShortcut separates groups, profiles, apps and outside links", () => {
   assert.deepEqual(classifyShortcut("https://www.facebook.com/groups/615000000000042/"), { kind: "group", url: "https://www.facebook.com/groups/615000000000042/", id: "615000000000042" });
   assert.equal(classifyShortcut("https://www.facebook.com/groups/gamingclub/?ref=bookmarks").url, "https://www.facebook.com/groups/gamingclub/");
@@ -89,6 +96,10 @@ test("classifyShortcut separates groups, profiles, apps and outside links", () =
   assert.equal(classifyShortcut("https://www.facebook.com/groups/1/posts/2/").kind, "app");
   assert.deepEqual(classifyShortcut("https://www.facebook.com/profile.php?id=100001&ref=x"), { kind: "profile", url: "https://www.facebook.com/profile.php?id=100001", id: "100001" });
   assert.equal(classifyShortcut("https://www.facebook.com/examplebakery").url, "https://www.facebook.com/examplebakery");
+  assert.deepEqual(classifyShortcut("https://www.facebook.com/pat.example?ref=bookmarks"), { kind: "profile", url: "https://www.facebook.com/pat.example", id: "pat.example" });
+  for (const php of ["/home.php", "/photo.php?fbid=1", "/permalink.php?story_fbid=1", "/story.php?id=1", "/login.php"]) {
+    assert.equal(classifyShortcut(`https://www.facebook.com${php}`).kind, "app", php);
+  }
   for (const app of ["/friends/?ref=bookmarks", "/onthisday/", "/saved/", "/marketplace/?ref=bookmark", "/?filter=all&sk=h_chr", "/events?ref=bookmarks", "/messages/t/", "/gaming/play/", "/bookmarks/", "/profile.php"]) {
     assert.equal(classifyShortcut(`https://www.facebook.com${app}`).kind, "app", app);
   }
@@ -104,6 +115,13 @@ test("nameAndCount picks the name and the badge number out of a row", () => {
   assert.deepEqual(nameAndCount(["42"]), { name: "42", count: 0 });
   assert.deepEqual(nameAndCount(["  Pat   Example "]), { name: "Pat Example", count: 0 });
   assert.deepEqual(nameAndCount([]), { name: "", count: 0 });
+});
+
+test("nameAndCount reads a badge meta line such as '3 new' when there is no bare number", () => {
+  assert.deepEqual(nameAndCount(["Friends", "3 new"]), { name: "Friends", count: 3 });
+  assert.deepEqual(nameAndCount(["Gaming Club", "Unread items indicator", "9+ new posts"]), { name: "Gaming Club", count: 9 });
+  assert.deepEqual(nameAndCount(["2010 Fans"]), { name: "2010 Fans", count: 0 }, "a name starting with a number is not a count");
+  assert.deepEqual(nameAndCount(["2010 Fans", "4 new posts"]), { name: "2010 Fans", count: 4 });
 });
 
 const ROWS = [
@@ -133,46 +151,76 @@ test("shortcutsFromRows finds the viewer by user id when the first row is someth
   assert.equal(shortcutsFromRows([ROWS[2], ROWS[4]]).me, null);
 });
 
+test("shortcutsFromRows: a viewer whose username has dots is still the viewer", () => {
+  const rows = [{ ...ROWS[0], href: "https://www.facebook.com/pat.example" }, ...ROWS.slice(1)];
+  const s = shortcutsFromRows(rows);
+  assert.equal(s.me?.url, "https://www.facebook.com/pat.example");
+  assert.equal(s.groups.length, 2);
+});
+
 const DAY = Date.UTC(2026, 9, 21, 12);
+const HOUR = 60 * 60 * 1000;
 const cached = {
-  v: 1,
-  savedAt: DAY - 60 * 60 * 1000,
+  v: 2,
+  userId: "1",
+  savedAt: DAY - HOUR,
   me: { name: "Pat Example", url: "https://www.facebook.com/profile.php?id=1", image: null, count: 0 },
   groups: [{ name: "Kraków Cyclists", url: "https://www.facebook.com/groups/1/", image: null, count: 3 }],
   pages: [],
   birthdays: [{ text: "Ana's birthday is today.", names: ["Ana"], others: 0, url: "https://www.facebook.com/events/birthdays/" }],
+  birthdaysAt: DAY - HOUR,
   contacts: [{ name: "Tom", online: true, url: "https://www.facebook.com/messages/t/2/", avatar: null }],
+  contactsAt: DAY - HOUR,
 };
+const nothingLive = { me: null, groups: undefined, pages: undefined, birthdays: undefined, contacts: undefined };
 
 test("mergeRail prefers live data and falls back to the cache", () => {
-  const live = { me: null, groups: undefined, pages: undefined, birthdays: undefined, contacts: undefined };
-  const m = mergeRail(live, cached, DAY);
+  const m = mergeRail(nothingLive, cached, DAY, "1");
   assert.equal(m.me.name, "Pat Example");
   assert.equal(m.groups.length, 1);
   assert.equal(m.birthdays.length, 1, "same day: cached birthdays are still true");
   assert.deepEqual(m.contacts.map((c) => c.online), [false], "an hour-old presence is stale");
-  const fresh = mergeRail(live, { ...cached, savedAt: DAY - 60 * 1000 }, DAY);
+  const fresh = mergeRail(nothingLive, { ...cached, contactsAt: DAY - 60 * 1000 }, DAY, "1");
   assert.deepEqual(fresh.contacts.map((c) => c.online), [true]);
-  const nextDay = mergeRail(live, cached, DAY + 24 * 60 * 60 * 1000);
+  const nextDay = mergeRail(nothingLive, cached, DAY + 24 * HOUR, "1");
   assert.deepEqual(nextDay.birthdays, [], "yesterday's birthdays are dropped");
-  const liveGroups = mergeRail({ ...live, groups: [] }, cached, DAY);
+  const liveGroups = mergeRail({ ...nothingLive, groups: [] }, cached, DAY, "1");
   assert.deepEqual(liveGroups.groups, [], "a live empty list wins over the cache");
 });
 
 test("mergeRail without any cache, or with an unknown cache version", () => {
-  const live = { me: null, groups: undefined, pages: undefined, birthdays: undefined, contacts: undefined };
-  assert.deepEqual(mergeRail(live, null, DAY), { me: null, groups: [], pages: [], birthdays: [], contacts: null });
-  assert.deepEqual(mergeRail(live, { ...cached, v: 99 }, DAY).groups, []);
+  assert.deepEqual(mergeRail(nothingLive, null, DAY), { me: null, groups: [], pages: [], birthdays: [], contacts: null });
+  assert.deepEqual(mergeRail(nothingLive, { ...cached, v: 1 }, DAY).groups, []);
 });
 
-test("railToCache keeps what was not read live this time", () => {
+test("mergeRail never shows another account's cached rail (shared browsers)", () => {
+  const other = mergeRail(nothingLive, cached, DAY, "2");
+  assert.deepEqual(other, { me: null, groups: [], pages: [], birthdays: [], contacts: null });
+  assert.equal(mergeRail(nothingLive, cached, DAY, null).me.name, "Pat Example", "an unknown viewer can only use what is there");
+});
+
+test("railToCache keeps what was not read live this time, with the time it was read", () => {
   const live = { me: null, groups: undefined, pages: undefined, birthdays: [], contacts: [{ name: "Ana", online: true, url: "u", avatar: null }] };
-  const next = railToCache(live, cached, DAY);
-  assert.equal(next.v, 1);
-  assert.equal(next.savedAt, DAY);
+  const next = railToCache(live, cached, DAY, "1");
+  assert.deepEqual([next.v, next.userId, next.savedAt], [2, "1", DAY]);
   assert.equal(next.me.name, "Pat Example");
   assert.equal(next.groups.length, 1);
-  assert.deepEqual(next.birthdays, []);
-  assert.deepEqual(next.contacts.map((c) => c.name), ["Ana"]);
-  assert.deepEqual(railToCache(live, null, DAY).groups, []);
+  assert.deepEqual([next.birthdays, next.birthdaysAt], [[], DAY]);
+  assert.deepEqual([next.contacts.map((c) => c.name), next.contactsAt], [["Ana"], DAY]);
+  assert.deepEqual(railToCache(live, null, DAY, "1").groups, []);
+});
+
+test("railToCache does not make carried-over birthdays or presence look fresh", () => {
+  const yesterday = { ...cached, birthdaysAt: DAY - 24 * HOUR, contactsAt: DAY - 24 * HOUR };
+  const next = railToCache({ ...nothingLive, groups: [] }, yesterday, DAY, "1");
+  assert.equal(next.birthdaysAt, DAY - 24 * HOUR);
+  assert.equal(next.contactsAt, DAY - 24 * HOUR);
+  const merged = mergeRail(nothingLive, next, DAY, "1");
+  assert.deepEqual(merged.birthdays, [], "yesterday's birthdays stay yesterday's");
+  assert.deepEqual(merged.contacts.map((c) => c.online), [false]);
+});
+
+test("railToCache starts over for another account", () => {
+  const next = railToCache({ ...nothingLive, groups: [] }, cached, DAY, "2");
+  assert.deepEqual([next.userId, next.me, next.birthdays, next.contacts, next.contactsAt], ["2", null, [], [], 0]);
 });

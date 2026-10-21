@@ -7,6 +7,8 @@ import { routeKey } from "./routes.js";
 import { mountRoot } from "./layout.js";
 
 const HELPER_WAIT_MS = 1500;
+// Hosts that serve the same desktop app; the shell's links are written for www.facebook.com.
+const APP_HOSTS = new Set(["www.facebook.com", "web.facebook.com", "facebook.com"]);
 
 function normPath(pathname) {
   return pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
@@ -17,12 +19,32 @@ export function samePlace(a, b) {
   return a.origin === b.origin && normPath(a.pathname) === normPath(b.pathname) && a.search === b.search;
 }
 
-/** A native anchor inside Facebook's React root that leads to `target`, or null. */
+/**
+ * Resolves `href` for navigation from `current` (a Location or URL): null unless http(s); a link to another
+ * host of the same app (www ↔ web.facebook.com) is moved onto the current host so it stays in the SPA.
+ */
+export function resolveTarget(href, current) {
+  let url;
+  try {
+    url = new URL(href, current.href);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  if (url.host !== current.host && APP_HOSTS.has(url.host) && APP_HOSTS.has(current.host)) {
+    url.protocol = current.protocol;
+    url.host = current.host;
+  }
+  return url;
+}
+
+/** A native anchor inside Facebook's React root that leads to `target`, or null. Never one of MFGA's own. */
 export function findNativeAnchor(target, doc = document) {
   const root = mountRoot(doc);
   if (!root) return null;
   for (const a of root.querySelectorAll("a[href]")) {
-    if (a.target && a.target !== "_self") continue;
+    // MFGA UI inside Facebook's root (#mfga-stream) is not React's: clicking it would come straight back here.
+    if ((a.target && a.target !== "_self") || a.closest(".mfga-ui")) continue;
     let u;
     try {
       u = new URL(a.getAttribute("href"), doc.baseURI);
@@ -60,7 +82,8 @@ export function createNavigator({ platform } = {}) {
   };
 
   const go = safe("nav", (href, { hard = false } = {}) => {
-    const url = new URL(href, location.href);
+    const url = resolveTarget(href, location);
+    if (!url) return health.count("nav.refused");
     if (hard || url.origin !== location.origin) return assign(url);
     if (typeof platform?.page?.navigate === "function") return viaHelper(url);
     if (!clickNative(url)) assign(url);

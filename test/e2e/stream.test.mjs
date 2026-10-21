@@ -237,6 +237,19 @@ describe("stream: story content", () => {
     await finish(page);
   });
 
+  test("a Facebook headline title continues the actor line instead of repeating the name", async () => {
+    const page = await openStream({ stories: "extra" });
+    const album = story(page, "3001");
+    assert.equal(await textOf(album.locator(".mfga-story-msg").first()), "Samantha Hodges added 3 new photos to the album Hawaii.");
+    assert.equal(await album.locator(".mfga-story-actor").count(), 1, "the name is shown once");
+    assert.equal(await album.locator(".mfga-story-title").count(), 0, "not a bold group-post title");
+    assert.equal(await textOf(album.locator(".mfga-story-msg").nth(1)), "Aloha from the Big Island!");
+    assert.equal(await album.locator(".mfga-att-grid .mfga-att-photo").count(), 3);
+    await waitForImages(page);
+    await page.screenshot({ path: path.join(OUT, "stream-headline-title.png"), clip: await album.boundingBox() });
+    await finish(page);
+  });
+
   test("a story renders on its own with renderStory", async () => {
     const page = await browser.newPage({ html: PAGE_HTML });
     await page.addScriptTag({ content: script });
@@ -340,6 +353,9 @@ describe("stream: comments", () => {
     const last = s.locator(".mfga-ufi-comment").last();
     assert.equal(await textOf(last), "J.D. Hodges So sorry Big hugs 0 seconds ago");
     assert.equal(await s.locator(".mfga-ufi-viewall").isVisible(), false, "the new comment joins the preview");
+    await box.evaluate((el) => el.blur());
+    assert.doesNotMatch(await s.locator(".mfga-ufi-add").getAttribute("class"), /mfga-ufi-add-active/);
+    assert.equal(await box.evaluate((el) => el.offsetHeight), 22, "the empty box collapses to one line again");
 
     // Whitespace-only input is ignored.
     await box.fill("   ");
@@ -439,6 +455,18 @@ describe("stream: comments", () => {
     assert.equal(await s.locator(".mfga-ufi-error").isVisible(), false);
     await finish(page);
   });
+
+  test("View all clicked while a preview is loading shows the error when that load fails", async () => {
+    const page = await openStream({ stories: "replica" });
+    await setCtl(page, { failComments: true, delayMs: 800 });
+    await page.waitForFunction(() => window.__calls.some((c) => c.name === "comments" && c.args[0] === "1001"));
+    const s = story(page, "1001");
+    await s.locator(".mfga-ufi-viewall-link").click();
+    await s.locator(".mfga-ufi-error").waitFor();
+    assert.equal(await textOf(s.locator(".mfga-ufi-error")), "Comments couldn't be loaded. Open the post on Facebook");
+    assert.equal((await calls(page, "comments")).filter((c) => c.args[0] === "1001").length, 1, "the click joined the running load");
+    await finish(page);
+  });
 });
 
 describe("stream: media", () => {
@@ -455,6 +483,19 @@ describe("stream: media", () => {
     assert.deepEqual(await video.evaluate((v) => [v.controls, v.autoplay, v.preload, v.width, v.height]), [true, true, "none", 320, 180]);
     assert.equal(await s.locator(".mfga-att-video-thumb").count(), 0);
     assert.equal((await calls(page, "open")).length, 0, "playing inline does not open the post");
+    await finish(page);
+  });
+
+  test("a poster URL that is not http(s) never reaches the <video>", async () => {
+    const page = await openStream({ stories: "extra" });
+    const s = story(page, "3002");
+    assert.equal(await s.locator(".mfga-att-video-thumb img").count(), 0);
+    assert.equal(await textOf(s.locator(".mfga-att-live")), "LIVE");
+    await s.locator(".mfga-att-video-thumb").click();
+    const video = s.locator("video.mfga-att-player");
+    await video.waitFor();
+    assert.equal(await video.getAttribute("src"), "https://video.fixture.fbcdn.net/unsafe-poster.mp4");
+    assert.equal(await video.getAttribute("poster"), null);
     await finish(page);
   });
 });
@@ -493,6 +534,44 @@ describe("stream: feed view", () => {
     await page.waitForSelector(".mfga-feed-end");
     assert.equal(await page.locator(".mfga-story").count(), 11);
     await finish(page);
+  });
+
+  test("auto-load never fetches while the stream is not displayed", async () => {
+    const page = await openStream({ stories: "all", autoLoad: true, previewComments: false }, { viewport: { width: 994, height: 600 } });
+    await page.waitForTimeout(500);
+    const more = async () => (await calls(page, "more")).length;
+    const before = await more();
+    await setCtl(page, { delayMs: 300, pageSize: 1 });
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.waitForFunction((n) => window.__calls.filter((c) => c.name === "more").length > n, before);
+    await page.evaluate(() => (document.getElementById("mfga-stream").style.display = "none"));
+    await page.waitForTimeout(1200);
+    assert.equal(await more(), before + 1, "only the page requested before the stream was hidden");
+    await page.evaluate(() => (document.getElementById("mfga-stream").style.display = ""));
+    await page.waitForFunction((n) => window.__calls.filter((c) => c.name === "more").length > n, before + 1);
+    await finish(page);
+  });
+
+  test("a throwing ctx callback or a missing feed never leaves the pager stuck", async () => {
+    const page = await browser.newPage({ html: PAGE_HTML });
+    await page.addScriptTag({ content: script });
+    await page.evaluate(() => window.mfgaStream.mount({ stories: "all", throwingCallbacks: true, previewComments: false }));
+    await page.locator(".mfga-feed-more:not(.mfga-loading)").waitFor();
+    assert.equal(await page.locator(".mfga-story").count(), 4);
+    await page.locator(".mfga-feed-more").click();
+    await page.waitForFunction(() => document.querySelectorAll(".mfga-story").length === 8);
+    await page.locator(".mfga-feed-more:not(.mfga-loading)").waitFor();
+    const health = await page.evaluate(() => window.mfgaStream.health());
+    assert.equal(health.errors["stream.ui"]?.n, 3, "onSeen once and hiddenStats twice are recorded");
+
+    await page.evaluate(() => window.mfgaStream.mount({ stories: "all", noFeed: true }));
+    await page.locator(".mfga-feed-error").waitFor();
+    assert.equal(await textOf(page.locator(".mfga-feed-error")), "News Feed couldn't be loaded right now. Try Again");
+    await page.locator(".mfga-feed-retry").click();
+    assert.equal((await calls(page, "getFeed")).length, 3, "Try Again asks for a feed again");
+    assert.equal(await page.locator(".mfga-feed-error").count(), 1);
+    assert.deepEqual(page.__errors || [], [], "no page errors");
+    await page.close();
   });
 
   test("error state with retry, then empty state", async () => {

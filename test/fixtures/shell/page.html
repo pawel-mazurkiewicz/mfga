@@ -6,8 +6,8 @@
   chat root, and a body-level portal holding a [role=dialog]. Class names are atomic-style placeholders;
   MFGA never selects on them. The geometry mirrors CometHomeLayout / CometMainContentWrapper, and the
   wrappers paint the wash colour (the worst case for a shell drawn underneath them).
-  The inline script stands in for React: anchor clicks inside the root are routed with pushState, and the
-  "Your profile" button opens the account menu inside the banner.
+  The inline script stands in for React: clicks on Facebook's own anchors inside the root are routed with
+  pushState, and the "Your profile" button opens the account menu inside the banner.
 -->
 <html id="facebook" class="_9dls __fb-light-mode" lang="en" dir="ltr">
 <head>
@@ -161,7 +161,7 @@ ul { list-style: none; margin: 0; padding: 0; }
       <div>
         <div><h3>Contacts</h3><div role="button" aria-label="Search for a name or group"></div><div role="button" aria-label="More options for contacts"></div></div>
         <ul>
-          <li><a class="xrow" href="/messages/t/1000/" aria-label="Meta AI profile photo Meta AIVerified account"><svg><image href="https://scontent.xx.fbcdn.net/v/gen-ai/meta-ai.png"></image></svg><span>Meta AI</span></a></li>
+          <li><a class="xrow" href="/messages/t/1000/" aria-label="Meta AI profile photo Meta AIVerified account"><svg><image xlink:href="https://scontent.xx.fbcdn.net/v/gen-ai/meta-ai.png"></image></svg><span>Meta AI</span></a></li>
           <li><a class="xrow" href="/messages/t/1001/" aria-label="Petronella O'Negriezz, Active"><img src="https://scontent.xx.fbcdn.net/v/t39.30808-1/c1.png" alt=""><span>Petronella O'Negriezz</span></a></li>
           <li><a class="xrow" href="/messages/t/1002/" aria-label="Tom Hellier, Active"><img src="https://scontent.xx.fbcdn.net/v/t39.30808-1/c2.png" alt=""><span>Tom Hellier</span></a></li>
           <li><a class="xrow" href="/messages/t/1003/" aria-label="Ágnes Fülöp, Active"><img src="https://scontent.xx.fbcdn.net/v/t39.30808-1/c3.png" alt=""><span>Ágnes Fülöp</span></a></li>
@@ -200,7 +200,8 @@ ul { list-style: none; margin: 0; padding: 0; }
     }
     if (e.target.closest("#fx-logout")) { window.__fb.logout++; return; }
     var a = e.target.closest("a[href]");
-    if (!a || a.target) return;
+    // React routes only its own links: MFGA's nodes inside the root (#mfga-stream) have no handler.
+    if (!a || a.target || a.closest(".mfga-ui")) return;
     e.preventDefault();
     window.__fb.clicks.push(a.getAttribute("href"));
     history.pushState({ key: "state-key-" + Date.now() }, "", a.href);

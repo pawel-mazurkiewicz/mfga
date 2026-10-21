@@ -428,11 +428,16 @@ export function startCleaner({ settings, route, onStats } = {}) {
   /** Something in the stats changed: report it within 250ms (a throttle, so a busy page cannot starve it). */
   function touch() {
     if (!onStats || statsTimer || stopped) return;
+    // A failing listener is recorded but must not switch the cleaning off.
     statsTimer = setTimeout(
-      safe("cleaner", () => {
-        statsTimer = 0;
-        if (!stopped) onStats(snapshot());
-      }),
+      safe(
+        "cleaner",
+        () => {
+          statsTimer = 0;
+          if (!stopped) onStats(snapshot());
+        },
+        { disableOnError: false },
+      ),
       250,
     );
   }

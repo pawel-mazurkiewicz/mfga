@@ -47,6 +47,12 @@ ${P("message")} a, ${P("message")} a *, ${P("message")} [role="button"] { color:
 
 ${P("attachment")} { margin-inline: calc(var(--mfga-indent) + 16px) 16px !important; }
 ${P("attachment")} * { border-radius: 0 !important; }
+/* Shared posts and reels inside an attachment: square avatars and blue names, like the post's own header. */
+${P("attachment")} svg g[mask] { mask: none !important; }
+${P("attachment")} svg g[mask] > :not(image) { display: none !important; }
+${P("attachment")} [data-ad-rendering-role="profile_name"] a, ${P("attachment")} [data-ad-rendering-role="profile_name"] a * {
+  color: #3B5998 !important; font-weight: bold !important;
+}
 
 ${P("actions")} {
   display: flex !important; flex-wrap: wrap !important; justify-content: flex-start !important; align-items: center !important;

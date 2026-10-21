@@ -244,6 +244,31 @@ export const galleryStories = [
   }),
 ];
 
+// ---- review regressions: Facebook headline titles, unsafe media URLs ----
+
+export const extraStories = [
+  story({
+    postId: "3001",
+    time: ago(40 * MIN),
+    actors: [SAMANTHA],
+    avatar: img("samantha-50.png"),
+    title: "Samantha Hodges added 3 new photos to the album Hawaii.",
+    text: "Aloha from the Big Island!",
+    attachments: [{ kind: "photo", total: 3, items: [1, 2, 3].map((i) => ({ uri: img(`photo-hawaii${i}-1200x900.svg`), width: 1200, height: 900, href: fb(`photo/?fbid=30${i}`), alt: "" })) }],
+    feedback: { reactions: 2, comments: 0 },
+  }),
+  story({
+    postId: "3002",
+    time: ago(50 * MIN),
+    actors: [NASA],
+    avatar: img("photo-nasa-50x50.svg"),
+    sources: ["pages"],
+    text: "A poster that is not an image URL.",
+    attachments: [{ kind: "video", poster: "javascript:alert(1)", sd: null, hd: `${VIDEO_HOST}/unsafe-poster.mp4`, width: 640, height: 360, href: fb("NASA/videos/778/"), duration: 0, live: true }],
+    feedback: { reactions: 0, comments: 0 },
+  }),
+];
+
 // ---- comments, chronological (oldest first) ----
 
 function generated(postId, count, startAgo) {

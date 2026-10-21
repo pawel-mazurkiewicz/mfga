@@ -17,6 +17,7 @@ import {
   mergeComments,
   passiveHeadline,
   photoGrid,
+  titleTail,
   truncateSegments,
 } from "../../../src/ui/stream/format.js";
 
@@ -121,7 +122,15 @@ describe("hidden status line", () => {
     assert.deepEqual(hiddenCounts(stats), { ads: 4, suggested: 7 });
     assert.deepEqual(hiddenCounts({ dropped: stats }), { ads: 4, suggested: 7 });
   });
+  test("merge.stats() shape: reasons under `hidden`, counters ignored", () => {
+    const stats = { emitted: 30, duplicates: 4, keyword: 2, hidden: { keyword: 2, "sponsored-data": 3, recommended: 1, "join-suggestion": 1, "category:FB_SHORTS": 1, "no-node": 2, unparsed: 1 }, sources: { friends: { fetched: 12 } } };
+    assert.deepEqual(hiddenCounts(stats), { ads: 3, suggested: 3 });
+  });
+  test("only drop reasons count: unknown keys are neither ads nor suggestions", () => {
+    assert.deepEqual(hiddenCounts({ unparsed: 5, unknown: 1, fetched: 9, "unit:StoriesTrayFeedUnit": 1 }), { ads: 0, suggested: 1 });
+  });
   test("missing or odd input", () => {
+    assert.deepEqual(hiddenCounts([3, 4]), { ads: 0, suggested: 0 });
     assert.deepEqual(hiddenCounts(null), { ads: 0, suggested: 0 });
     assert.deepEqual(hiddenCounts({ ads: "x", suggested: -1 }), { ads: 0, suggested: 0 });
   });
@@ -213,6 +222,23 @@ describe("passiveHeadline", () => {
     setLocale("pl");
     assert.equal(passiveHeadline({ attachments: [{ kind: "photo", items: [{ uri: "u" }], total: 3 }] }), "dodaje 3 nowe zdjęcia.");
     assert.equal(passiveHeadline({ attachments: [{ kind: "photo", items: [{ uri: "u" }], total: 5 }] }), "dodaje 5 nowych zdjęć.");
+  });
+});
+
+describe("titleTail (Facebook headline titles)", () => {
+  const carol = [{ name: "Carol Nowak" }];
+  test("a headline that starts with the actor's name keeps only what follows", () => {
+    assert.equal(titleTail({ actors: carol, title: "Carol Nowak added 23 new photos to the album Wedding." }), " added 23 new photos to the album Wedding.");
+    assert.equal(titleTail({ actors: carol, title: "Carol Nowak's birthday party" }), "'s birthday party");
+    assert.equal(titleTail({ actors: carol, title: "  Carol Nowak  " }), "");
+  });
+  test("other titles are not headlines", () => {
+    assert.equal(titleTail({ actors: carol, title: "Saturday walk: 18 km in the Tatras" }), null);
+    assert.equal(titleTail({ actors: [{ name: "Ann" }], title: "Annual meeting notes" }), null, "a name is a whole word");
+    assert.equal(titleTail({ actors: [{ name: "Zoë" }], title: "Zoëlle's rules" }), null);
+    assert.equal(titleTail({ actors: [], title: "Carol Nowak added a photo." }), null);
+    assert.equal(titleTail({ actors: carol, title: null }), null);
+    assert.equal(titleTail(null), null);
   });
 });
 

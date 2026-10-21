@@ -10,7 +10,7 @@ import { renderStory } from "../../../src/ui/stream/story.js";
 import { setLocale } from "../../../src/shared/i18n.js";
 import { sanitize } from "../../../src/shared/settings.js";
 import { health } from "../../../src/shared/util.js";
-import { COMMENTS, ME, NOW, allStories, galleryStories, replicaStories } from "../../fixtures/stream/stories.mjs";
+import { COMMENTS, ME, NOW, allStories, extraStories, galleryStories, replicaStories } from "../../fixtures/stream/stories.mjs";
 
 const calls = [];
 const ctl = {
@@ -36,6 +36,7 @@ const STORY_SETS = {
   all: () => [...allStories].sort((a, b) => b.time - a.time),
   replica: () => replicaStories,
   gallery: () => galleryStories,
+  extra: () => extraStories,
   none: () => [],
 };
 
@@ -91,6 +92,7 @@ function makeFeed(list) {
   const feed = {
     exhausted: false,
     async more() {
+      record("more");
       await wait();
       if (ctl.failPage) throw new Error("network");
       const page = list.slice(next, next + ctl.pageSize);
@@ -118,6 +120,8 @@ function mount({
   lastSeen = null,
   hidden = { ads: 3, suggested: 5 },
   noActions = false,
+  noFeed = false,
+  throwingCallbacks = false,
 } = {}) {
   setLocale(locale);
   const settings = sanitize({ feed: { autoLoad, previewComments, mode }, look: { welcome } });
@@ -131,15 +135,21 @@ function mount({
     open: (url, opts) => record("open", url, opts),
     getFeed(feedMode, sources) {
       record("getFeed", feedMode, sources);
-      return makeFeed(STORY_SETS[feedMode === "top" ? topStories : stories]());
+      return noFeed ? null : makeFeed(STORY_SETS[feedMode === "top" ? topStories : stories]());
     },
     mode,
     onModeChange: (m) => record("modeChange", m),
     openComposer: () => record("openComposer"),
-    hiddenStats: () => hidden,
+    hiddenStats: () => {
+      if (throwingCallbacks) throw new Error("stats not ready");
+      return hidden;
+    },
     onDismissWelcome: () => record("dismissWelcome"),
     lastSeen,
-    onSeen: (t) => record("seen", t),
+    onSeen: (t) => {
+      record("seen", t);
+      if (throwingCallbacks) throw new Error("storage full");
+    },
   };
   view = createFeedView(ctx);
   document.getElementById("col").append(view.el);

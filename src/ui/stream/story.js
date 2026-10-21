@@ -4,7 +4,7 @@ import { h, joinNodes, replaceChildren } from "../dom.js";
 import { t } from "../../shared/i18n.js";
 import { textSegments } from "../../data/text.js";
 import { renderAttachments } from "./attachments.js";
-import { passiveHeadline, truncateSegments } from "./format.js";
+import { passiveHeadline, titleTail, truncateSegments } from "./format.js";
 import { avatar, link, linkButton, nowMs, routeClicks, segmentNodes, sep } from "./parts.js";
 import { timeNode } from "./time.js";
 import { createFeedback } from "./ufi.js";
@@ -35,13 +35,25 @@ function messageText(story) {
   return el;
 }
 
-/** "Actor ▸ Group  message"; a group post title gets its own bold line before the text. */
-function headline(story) {
+/** The words after the actor: the rest of Facebook's headline title, or 2010's passive headline. */
+function passiveText(story, tail) {
+  if (tail != null) return tail;
   const passive = passiveHeadline(story);
+  return passive && ` ${passive}`;
+}
+
+/**
+ * "Actor ▸ Group  message". A headline title ("Carol Nowak added 23 new photos ...") continues the actor
+ * line; any other title (a group post title) gets its own bold line. With a title, the text follows below.
+ */
+function headline(story) {
+  const tail = titleTail(story);
+  const actors = tail == null ? story.actors : story.actors.slice(0, 1);
+  const passive = passiveText(story, tail);
   const text = messageText(story);
-  const head = h("div.mfga-story-msg", actorNodes(story.actors), targetNodes(story.target), passive ? [" ", h("span.mfga-story-passive", passive)] : null, !story.title && text ? [" ", text] : null);
+  const head = h("div.mfga-story-msg", actorNodes(actors), targetNodes(story.target), passive ? h("span.mfga-story-passive", passive) : null, !story.title && text ? [" ", text] : null);
   if (!story.title) return head;
-  return [head, h("div.mfga-story-title", story.title), text ? h("div.mfga-story-msg", text) : null];
+  return [head, tail == null ? h("div.mfga-story-title", story.title) : null, text ? h("div.mfga-story-msg", text) : null];
 }
 
 function timeLink(story, ctx) {

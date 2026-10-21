@@ -1,0 +1,22 @@
+{
+  "name": "mfga",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Make Facebook Great Again - Facebook, the way it looked in 2010, with only your friends, groups and pages.",
+  "license": "MIT",
+  "scripts": {
+    "atlas": "python3 tools/make-atlas.py",
+    "build": "node scripts/build.mjs",
+    "test": "node --test \"test/unit/**/*.test.mjs\"",
+    "test:e2e": "node --test --test-concurrency=1 \"test/e2e/**/*.test.mjs\"",
+    "check": "npm run build && npm test && npm run test:e2e"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "playwright-core": "1.56.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,429 @@
+{
+ "nav_news_feed": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 1,
+  "y": 847,
+  "w": 15,
+  "h": 15
+ },
+ "nav_messages": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 1,
+  "y": 1167,
+  "w": 16,
+  "h": 14
+ },
+ "nav_messages_blue": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 2,
+  "y": 480,
+  "w": 14,
+  "h": 13
+ },
+ "nav_inbox_envelope": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 398,
+  "w": 16,
+  "h": 16
+ },
+ "nav_events": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 1,
+  "y": 155,
+  "w": 15,
+  "h": 16
+ },
+ "nav_photos": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 959,
+  "w": 16,
+  "h": 15
+ },
+ "nav_friends": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 1366,
+  "w": 16,
+  "h": 14
+ },
+ "nav_apps": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 1118,
+  "w": 16,
+  "h": 16
+ },
+ "nav_pages": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 334,
+  "w": 16,
+  "h": 16
+ },
+ "nav_groups": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 671,
+  "w": 16,
+  "h": 14
+ },
+ "nav_notes": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 1437,
+  "w": 16,
+  "h": 13
+ },
+ "nav_games": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 991,
+  "w": 14,
+  "h": 14
+ },
+ "nav_video": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 1261,
+  "w": 16,
+  "h": 15
+ },
+ "nav_marketplace": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 1102,
+  "w": 16,
+  "h": 16
+ },
+ "nav_saved": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 1,
+  "y": 1308,
+  "w": 15,
+  "h": 13
+ },
+ "nav_favorites": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 1633,
+  "w": 12,
+  "h": 11
+ },
+ "nav_most_recent": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 1,
+  "y": 1276,
+  "w": 15,
+  "h": 15
+ },
+ "nav_flag": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 1,
+  "y": 637,
+  "w": 15,
+  "h": 16
+ },
+ "nav_ads": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 1,
+  "y": 1246,
+  "w": 15,
+  "h": 15
+ },
+ "nav_birthdays": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 1,
+  "y": 1292,
+  "w": 15,
+  "h": 14
+ },
+ "nav_globe": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 1182,
+  "w": 16,
+  "h": 16
+ },
+ "nav_help": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 1230,
+  "w": 15,
+  "h": 16
+ },
+ "nav_search": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 830,
+  "w": 16,
+  "h": 16
+ },
+ "nav_status": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 1,
+  "y": 798,
+  "w": 16,
+  "h": 16
+ },
+ "ufi_like": {
+  "sheet": "fb-2009-ejni29l8.png",
+  "x": 38,
+  "y": 128,
+  "w": 12,
+  "h": 11
+ },
+ "ufi_like_big": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 1,
+  "y": 1543,
+  "w": 13,
+  "h": 12
+ },
+ "ufi_comment": {
+  "sheet": "fb-2009-ejni29l8.png",
+  "x": 171,
+  "y": 93,
+  "w": 13,
+  "h": 13
+ },
+ "rc_gift": {
+  "sheet": "fb-2009-ejni29l8.png",
+  "x": 104,
+  "y": 109,
+  "w": 15,
+  "h": 14
+ },
+ "rc_poke": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 1410,
+  "w": 16,
+  "h": 15
+ },
+ "rc_friend_request": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 703,
+  "w": 16,
+  "h": 14
+ },
+ "rc_friend_suggestion": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 1,
+  "y": 734,
+  "w": 16,
+  "h": 16
+ },
+ "rc_group_invite": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 671,
+  "w": 16,
+  "h": 14
+ },
+ "rc_other_requests": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 1071,
+  "w": 16,
+  "h": 14
+ },
+ "rc_invite": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 1454,
+  "w": 16,
+  "h": 12
+ },
+ "rc_contact_importer": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 718,
+  "w": 16,
+  "h": 17
+ },
+ "rc_mobile": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 5,
+  "y": 862,
+  "w": 11,
+  "h": 16
+ },
+ "rc_become_fan": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 879,
+  "w": 16,
+  "h": 14
+ },
+ "rc_send_message": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 398,
+  "w": 16,
+  "h": 16
+ },
+ "rc_event": {
+  "sheet": "fb-2009-ejni29l8.png",
+  "x": 53,
+  "y": 109,
+  "w": 15,
+  "h": 16
+ },
+ "chat_idle": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 1466,
+  "w": 16,
+  "h": 10
+ },
+ "chat_offline": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 1476,
+  "w": 16,
+  "h": 10
+ },
+ "chat_online": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 1486,
+  "w": 16,
+  "h": 10
+ },
+ "chat_person": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 1,
+  "y": 171,
+  "w": 15,
+  "h": 17
+ },
+ "misc_tri_blue_down": {
+  "sheet": "fb-2009-ejni29l8.png",
+  "x": 63,
+  "y": 128,
+  "w": 9,
+  "h": 5
+ },
+ "misc_tri_gray_down": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 1,
+  "y": 1717,
+  "w": 9,
+  "h": 7
+ },
+ "misc_tri_gray_right": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 2,
+  "y": 1725,
+  "w": 7,
+  "h": 9
+ },
+ "misc_arrow_right": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 3,
+  "y": 503,
+  "w": 10,
+  "h": 4
+ },
+ "misc_x": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 1705,
+  "w": 11,
+  "h": 11
+ },
+ "misc_check": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 1597,
+  "w": 13,
+  "h": 11
+ },
+ "misc_lock": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 7,
+  "y": 1024,
+  "w": 9,
+  "h": 11
+ },
+ "misc_lock_small": {
+  "sheet": "fb-2009-ejni29l8.png",
+  "x": 1,
+  "y": 145,
+  "w": 8,
+  "h": 10
+ },
+ "misc_warning": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 302,
+  "w": 16,
+  "h": 16
+ },
+ "misc_green_plus": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 1743,
+  "w": 10,
+  "h": 10
+ },
+ "misc_heart": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 1039,
+  "w": 15,
+  "h": 14
+ },
+ "misc_pencil": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 0,
+  "y": 574,
+  "w": 16,
+  "h": 16
+ },
+ "misc_photo09": {
+  "sheet": "fb-2009-ejni29l8.png",
+  "x": 33,
+  "y": 92,
+  "w": 16,
+  "h": 15
+ },
+ "misc_video09": {
+  "sheet": "fb-2009-ejni29l8.png",
+  "x": 51,
+  "y": 93,
+  "w": 15,
+  "h": 12
+ },
+ "misc_status09": {
+  "sheet": "fb-2009-ejni29l8.png",
+  "x": 17,
+  "y": 91,
+  "w": 15,
+  "h": 16
+ },
+ "misc_addfriend09": {
+  "sheet": "fb-2009-ejni29l8.png",
+  "x": 101,
+  "y": 92,
+  "w": 16,
+  "h": 15
+ },
+ "misc_fb_square": {
+  "sheet": "fb-2012-Mj5nS9bWTJX.png",
+  "x": 1,
+  "y": 607,
+  "w": 14,
+  "h": 14
+ },
+ "logo_big": {
+  "sheet": "fb-2009-ejni29l8.png",
+  "x": 0,
+  "y": 0,
+  "w": 190,
+  "h": 90
+ }
+}

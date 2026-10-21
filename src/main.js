@@ -428,10 +428,19 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
     layout.apply(route);
     const feedChanged =
       JSON.stringify(next.feed) !== JSON.stringify(prev.feed) || next.look.shell !== prev.look.shell || next.language !== prev.language;
-    if (feedChanged && route.mode === "home") {
-      feedKey = null; // rebuild with the new sources / mode / keywords
-      syncFeed();
+    if (!feedChanged || route.mode !== "home") return;
+    // "Top News · Most Recent" in the view already reloaded itself: only remember which feed it shows.
+    const onlyMode =
+      next.feed.mode !== prev.feed.mode &&
+      JSON.stringify({ ...next.feed, mode: 0 }) === JSON.stringify({ ...prev.feed, mode: 0 }) &&
+      next.look.shell === prev.look.shell &&
+      next.language === prev.language;
+    if (onlyMode && feedView) {
+      feedKey = feedSpec(route, next).key;
+      return;
     }
+    feedKey = null; // rebuild with the new sources / keywords / language
+    syncFeed();
   }
 
   return { start, onSettings, openSettings };

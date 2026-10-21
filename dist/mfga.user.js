@@ -8246,10 +8246,14 @@ ${docId}`;
       if (!started) return start();
       layout.apply(route);
       const feedChanged = JSON.stringify(next.feed) !== JSON.stringify(prev.feed) || next.look.shell !== prev.look.shell || next.language !== prev.language;
-      if (feedChanged && route.mode === "home") {
-        feedKey = null;
-        syncFeed();
+      if (!feedChanged || route.mode !== "home") return;
+      const onlyMode = next.feed.mode !== prev.feed.mode && JSON.stringify({ ...next.feed, mode: 0 }) === JSON.stringify({ ...prev.feed, mode: 0 }) && next.look.shell === prev.look.shell && next.language === prev.language;
+      if (onlyMode && feedView) {
+        feedKey = feedSpec(route, next).key;
+        return;
       }
+      feedKey = null;
+      syncFeed();
     }
     return { start, onSettings, openSettings };
   }

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveTarget } from "../../../src/fb/nav.js";
-import { changedVars, syncObserved } from "../../../src/fb/layout.js";
+import { changedVars, syncObserved, touchesDialog } from "../../../src/fb/layout.js";
 
 const www = new URL("https://www.facebook.com/?filter=all&sk=h_chr");
 const web = new URL("https://web.facebook.com/groups/feed/");
@@ -61,4 +61,28 @@ test("changedVars ignores sub-pixel re-measurement noise, so an idle page is nev
   assert.deepEqual(changedVars({ dx: 43.66, dy: 20.05, footer: 8931.04 }, applied), { geometry: false, footer: false });
   assert.deepEqual(changedVars({ dx: 44.66, dy: 20, footer: 8931 }, applied), { geometry: true, footer: false });
   assert.deepEqual(changedVars({ dx: 43.66, dy: 20, footer: 9500 }, applied), { geometry: false, footer: true }, "the footer alone moves when the page grows");
+});
+
+test("touchesDialog: only inserted/removed subtrees holding a dialog, or a role change to/from dialog, re-check the page", () => {
+  // Minimal element stand-ins: role attribute and descendants.
+  const el = (role, ...kids) => ({
+    nodeType: 1,
+    role,
+    kids,
+    matches: (sel) => sel === '[role="dialog"]' && role === "dialog",
+    querySelector(sel) {
+      for (const k of kids) if (k.matches(sel) || k.querySelector(sel)) return k;
+      return null;
+    },
+    getAttribute: (name) => (name === "role" ? role : null),
+  });
+  const text = { nodeType: 3 };
+  const add = (...nodes) => ({ type: "childList", addedNodes: nodes, removedNodes: [] });
+  const remove = (...nodes) => ({ type: "childList", addedNodes: [], removedNodes: nodes });
+  assert.equal(touchesDialog([add(el("article", el(null)), text), remove(el("button"))]), false, "ordinary feed churn");
+  assert.equal(touchesDialog([add(el(null, el("presentation", el("dialog"))))]), true, "a portal holding a dialog");
+  assert.equal(touchesDialog([remove(el("dialog"))]), true, "a dialog closed");
+  assert.equal(touchesDialog([{ type: "attributes", target: el("dialog"), oldValue: null }]), true);
+  assert.equal(touchesDialog([{ type: "attributes", target: el("region"), oldValue: "dialog" }]), true);
+  assert.equal(touchesDialog([{ type: "attributes", target: el("region"), oldValue: "button" }]), false);
 });

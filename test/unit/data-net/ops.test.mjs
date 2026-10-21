@@ -268,3 +268,43 @@ test("runOp + registry: every stale tier is tried once across calls", async () =
   assert.deepEqual(client.calls.map((c) => c.docId), ["11111111111111111", "33333333333333333", "44444444444444444", FALLBACK_DOC_IDS[OP]]);
   assert.equal(await runOp({ client, ops: registry }, OP, () => ({})), null, "nothing left to try");
 });
+
+test("an id without a template (probe, fallback) borrows the newest known one, even an invalidated id's", async () => {
+  const stored = { [OP]: { docId: "33333333333333333", variables: { from: "cache" }, seenAt: 1_800_000_000_000, source: "learned" } };
+  const { registry, platform } = setup({ stored, probe: "44444444444444444" });
+  assert.equal((await registry.get(OP)).docId, "33333333333333333");
+  await registry.invalidate(OP, "33333333333333333");
+  const next = await registry.get(OP);
+  assert.deepEqual(next, { docId: "44444444444444444", variables: { from: "cache" }, source: "probe", fresh: true });
+  await flush();
+  assert.deepEqual((await platform.storage.get(OPS_STORAGE_KEY))[OP].variables, { from: "cache" }, "persisted with the template it is sent with");
+  await registry.invalidate(OP, "44444444444444444");
+  assert.deepEqual(await registry.get(OP), { docId: FALLBACK_DOC_IDS[OP], variables: { from: "cache" }, source: "fallback", fresh: false });
+});
+
+test("runOp + registry: after a deploy the probed id is sent with the old id's variables (no 'variables' failure)", async () => {
+  const stored = { [OP]: { docId: "33333333333333333", variables: { feedStyle: "X" }, seenAt: 1_800_000_000_000, source: "preloader" } };
+  const { registry } = setup({ stored, probe: "44444444444444444" });
+  const client = fakeClient((name, docId) => {
+    if (docId !== "44444444444444444") throw new GqlError("unknown doc", { code: 1570245, kind: "stale-doc" });
+    return { data: { ok: docId } };
+  });
+  const build = (op) => {
+    if (!op.variables) throw new GqlError("no template", { kind: "variables" });
+    return { ...op.variables, cursor: null };
+  };
+  assert.deepEqual((await runOp({ client, ops: registry }, OP, build)).data, { ok: "44444444444444444" });
+  assert.deepEqual(client.calls.map((c) => [c.docId, c.variables.feedStyle]), [["33333333333333333", "X"], ["44444444444444444", "X"]]);
+});
+
+test("invalidate() re-reads the background at once: Facebook's own request may carry the new id", async () => {
+  let t = 1_800_000_000_000;
+  const learned = {};
+  const s = setup({ learned, stored: { [OP]: { docId: "33333333333333333", variables: null, seenAt: t, source: "probe" } }, now: () => t });
+  assert.equal((await s.registry.get(OP)).source, "cache");
+  learned[OP] = { docId: "22222222222222222", variables: { v: 1 }, seenAt: t + 1 };
+  t += 1000; // well within the 15 s TTL
+  await s.registry.invalidate(OP, "33333333333333333");
+  assert.deepEqual(await s.registry.get(OP), { docId: "22222222222222222", variables: { v: 1 }, source: "learned", fresh: false });
+  assert.equal(s.learnedCalls(), 2);
+});

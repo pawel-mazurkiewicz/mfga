@@ -36,12 +36,38 @@ test("the 2010 palette and grid are in place", () => {
   assert.match(css, /\.mfga-header\{position:absolute;top:0;left:0;right:0;min-width:980px;height:41px/);
 });
 
+test("on Home the 520px slot has no padding of Facebook's: the stream starts at the column's edge", () => {
+  // Facebook pads [role=main] (16px in the fixtures); left alone it pushed the stream 16px right and down.
+  const home = /html\[data-mfga-route="home"\] \[data-mfga-main\]\{([^}]*)\}/.exec(css)[1];
+  for (const side of ["left", "right", "top"]) assert.match(home, new RegExp(`padding-${side}:0!important`), side);
+  const groups = /html\[data-mfga-route="groups-feed"\] \[data-mfga-main\]\{([^}]*)\}/.exec(css)[1];
+  assert.doesNotMatch(groups, /padding/, "the groups feed is Facebook's own feed and keeps its padding");
+});
+
+test("2010 details: header links fill their 30px box, the nav rule is #F7F7F7, More/title follow the capture", () => {
+  const link = /\.mfga-header-link\{([^}]*)\}/.exec(css)[1];
+  assert.match(link, /height:30px/);
+  assert.match(link, /line-height:30px/, "anchors and the Account <button> put the label on one baseline");
+  assert.match(css, /\.mfga-nav-sep\{[^}]*background:#F7F7F7\}/, "retro-spec §4: the group rule is ≈#F7F7F7");
+  assert.match(css, /\.mfga-nav-sep-apps\{margin:8px 0 12px 6px\}/, "the capture draws the first rule at y=234, 8px under the last row");
+  assert.match(css, /\.mfga-nav-more\{[^}]*padding:5px 0 0 6px;/);
+  // retro-spec §4: glyphs sit 10px under their 13px line's top; "Chat with Friends" ends 20px under the rule.
+  assert.match(css, /\.mfga-nav-title\{margin-top:-4px;/);
+});
+
+test("the chat tab is hidden on page routes, where Facebook's page would cover it", () => {
+  assert.match(css, /html\[data-mfga-route="page"\] #mfga-shell :is\([^)]*\.mfga-chat-tab[^)]*\)[^{]*\{display:none\}/);
+});
+
 test("shell layers stay at z-index 0 so Facebook's layers, dialogs and docked chat paint above them", () => {
   const zs = [...css.matchAll(/z-index:(\d+)/g)].map((m) => Number(m[1]));
   assert.ok(zs.every((z) => z <= 2), String(zs));
   assert.match(css, /\.mfga-chat-tab\{position:fixed;right:15px;bottom:0;z-index:0/);
   assert.match(css, /html\[data-mfga-fixed-header\] #mfga-shell \.mfga-header\{position:fixed;z-index:1\}/, "a fixed bar must stay above the scrolling page");
-  assert.match(css, /html\[data-mfga-fixed-header\]:has\(\[role="dialog"\]:not\(\[role="banner"\] \*\)\) #mfga-shell \.mfga-header\{z-index:0\}/, "…but not above Facebook's dialogs");
+  assert.match(css, /html\[data-mfga-fixed-header\]\[data-mfga-dialog\] #mfga-shell \.mfga-header\{z-index:0\}/, "…but not above Facebook's dialogs");
+  // A :has() anchored on <html> made every DOM change restyle the whole page (3.8 s per 5 s of feed activity
+  // on a long feed); the layout keeps html[data-mfga-dialog] instead.
+  assert.doesNotMatch(css, /html[^{,]*:has\(/, "no :has() on <html>");
   assert.match(css, /#mfga-shell \.mfga-header\.mfga-header-open\{z-index:2\}/, "the open account menu sits above the page");
 });
 

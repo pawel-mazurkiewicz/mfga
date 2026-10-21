@@ -16,6 +16,10 @@ import { renderWelcome } from "./welcome.js";
 const MODES = ["top", "recent"];
 const TIME_REFRESH_MS = 60_000;
 const AUTOLOAD_PX = 600;
+// Auto-load follows the reader: at most this many pages in a row without the user scrolling (filling a tall
+// screen), and none after a page that added no stories (all filtered out, or nothing Facebook sent parsed), so a
+// feed that shows nothing is never crawled unattended. The user's next scroll or "Older Posts" carries on.
+const AUTOLOAD_UNATTENDED = 2;
 
 const renderOne = safe("stream.story", renderStory, { disableOnError: false });
 
@@ -35,6 +39,7 @@ export function createFeedView(ctx) {
     error: null,
     keys: new Set(),
     stories: [],
+    unattended: 0, // auto-loaded pages since the user last scrolled
   };
 
   const modes = h("div.mfga-feed-modes");
@@ -65,6 +70,19 @@ export function createFeedView(ctx) {
       ? new IntersectionObserver(onSentinel, { rootMargin: `0px 0px ${AUTOLOAD_PX}px 0px` })
       : null;
   sentinel?.observe(footer);
+  let scrollQueued = false;
+  const onScroll = guard(() => {
+    if (scrollQueued) return;
+    scrollQueued = true;
+    requestAnimationFrame(
+      guard(() => {
+        scrollQueued = false;
+        view.unattended = 0;
+        if (nearEnd()) loadMore({ auto: true });
+      }),
+    );
+  });
+  if (sentinel) addEventListener("scroll", onScroll, { passive: true });
 
   renderModes();
   guard(reload)();
@@ -102,7 +120,7 @@ export function createFeedView(ctx) {
   /** Drops the stories and starts again from the first page of a fresh feed. */
   async function reload() {
     view.gen++;
-    Object.assign(view, { feed: null, loading: false, error: null, stories: [] });
+    Object.assign(view, { feed: null, loading: false, error: null, stories: [], unattended: 0 });
     view.keys.clear();
     unwatchWithin(list);
     clear(list);
@@ -120,7 +138,8 @@ export function createFeedView(ctx) {
 
   async function loadMore({ auto = false } = {}) {
     const { feed, gen } = view;
-    if (!feed || view.loading || feed.exhausted || (auto && view.error)) return;
+    if (!feed || view.loading || feed.exhausted || (auto && (view.error || view.unattended >= AUTOLOAD_UNATTENDED))) return;
+    view.unattended = auto ? view.unattended + 1 : 0; // a click on "Older Posts" is the user too
     view.loading = true;
     view.error = null;
     renderFooter();
@@ -138,17 +157,21 @@ export function createFeedView(ctx) {
     if (gen !== view.gen) return;
     view.loading = false;
     const first = !view.stories.length;
-    appendStories(Array.isArray(stories) ? stories : []);
+    const added = appendStories(Array.isArray(stories) ? stories : []);
     renderFooter();
     // ctx callbacks run guarded: a throwing one must not leave the pager in its loading state.
     if (first) guard(reportSeen)();
     renderModes();
     guard(renderStatus)();
     health.count("stream.page");
-    if (sentinel && !feed.exhausted) requestAnimationFrame(guard(() => nearEnd() && loadMore({ auto: true })));
+    if (!added) health.count("stream.empty-page");
+    // Still near the end (a short page on a tall screen): go on, but only while pages add stories.
+    if (sentinel && added && !feed.exhausted) requestAnimationFrame(guard(() => nearEnd() && loadMore({ auto: true })));
   }
 
+  /** Renders the stories not shown yet; returns how many were added. */
   function appendStories(stories) {
+    let added = 0;
     for (const story of stories) {
       const key = story?.key || story?.postId || story?.nodeId;
       if (!key || view.keys.has(key)) continue;
@@ -157,7 +180,9 @@ export function createFeedView(ctx) {
       view.keys.add(key);
       view.stories.push(story);
       list.append(node);
+      added++;
     }
+    return added;
   }
 
   function reportSeen() {
@@ -213,6 +238,7 @@ export function createFeedView(ctx) {
     view.gen++;
     clearInterval(timer);
     sentinel?.disconnect();
+    removeEventListener("scroll", onScroll);
     unwatchWithin(el);
     el.remove();
   }

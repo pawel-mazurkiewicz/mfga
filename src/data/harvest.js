@@ -226,14 +226,16 @@ export function startHarvest({ onUpdate } = {}) {
   // mutation record. So while loading, incomplete scripts wait in `pending` and are retried on every later
   // mutation (the parser inserting the next node means the previous script is complete) and in the
   // DOMContentLoaded sweep. Afterwards, scripted inserts announce their text with a mutation of their own.
+  // Pending scripts come before the nodes of these records, so they are retried first: blocks are read in page
+  // order, which decides which LSD is kept (the first) and which fb_dtsg (the last).
   const onMutations = safe(
     "harvest",
     (records) => {
+      for (const s of pending) read(s);
       for (const r of records) {
         if (isHarvestScript(r.target)) read(r.target); // a text node was added to a script (scripted inserts)
         for (const n of r.addedNodes) if (isHarvestScript(n)) read(n);
       }
-      for (const s of pending) read(s);
     },
     { disableOnError: false },
   );

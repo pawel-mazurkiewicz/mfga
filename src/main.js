@@ -6,7 +6,8 @@
 //   3. settings load, then the route loop drives the shell, the cleaner, the skin and our News Feed.
 import { createSettings, DEFAULTS, sanitize } from "./shared/settings.js";
 import { registerStrings, setLocale, t } from "./shared/i18n.js";
-import { health, onBody, onRoot, safe, setDebug, warn } from "./shared/util.js";
+import { debounce, health, onBody, onRoot, safe, setDebug, warn } from "./shared/util.js";
+import { h } from "./ui/dom.js";
 import { iconCss } from "./ui/icons.js";
 import { baseCss } from "./ui/css/base.js";
 import { themeCss } from "./ui/css/theme.js";
@@ -34,9 +35,15 @@ import { openSettingsDialog } from "./ui/dialog/settings-dialog.js";
 
 const STYLE_ID = "mfga-style";
 const FEED_SOURCES = ["friends", "groups", "pages", "favorites"];
-// At least a second (1-1.5 s, jittered) between our requests, one at a time: Facebook's own page load
-// is far busier. Everything after the first page is user-paced ("Older Posts" or scrolling to the end).
-const REQUEST_GAP_MS = 1000;
+// ARCHITECTURE §1 rule 8: one request at a time, at least 1.5 s apart (1.5-2.25 s, jittered). Everything
+// after the first page is user-paced ("Older Posts" or scrolling to the end).
+const REQUEST_GAP_MS = 1500;
+// The SSR first page is as old as the page load: a feed built later (an SPA visit to Home) asks Facebook.
+const SSR_MAX_AGE_MS = 5 * 60e3;
+// Settings changes come in bursts (checkbox after checkbox): rebuild the feed once they settle.
+const FEED_REBUILD_DELAY_MS = 400;
+// GraphQL error kinds worth a "Try Again"; any other failure of a whole first page is permanent (merge.js).
+const TRANSIENT_KINDS = new Set(["network", "server", "rate", "soft-block", "token"]);
 const LAST_SEEN_KEY = "mfga:lastSeen";
 // dom-chrome §6: c_user (i_user while acting as a Page) is readable from document.cookie whenever someone is signed in.
 const SIGNED_IN_COOKIE = /(?:^|;\s*)(?:c_user|i_user)=\d+/;
@@ -89,9 +96,17 @@ function applyRootAttributes(s) {
   html.setAttribute("data-mfga-font", s.look.font);
 }
 
+/**
+ * MFGA switched off: nothing of Facebook's page is styled, but our own nodes still need their rules: the
+ * settings dialog (the userscript menu and the toolbar button still open it) and the hidden stream.
+ */
+function offCss(settings) {
+  return [baseCss(settings), dialogCss(), iconCss(), "#mfga-stream,#mfga-halted{display:none!important}"].join("\n");
+}
+
 function paint(style, s) {
   applyRootAttributes(s);
-  style.textContent = s.enabled ? buildCss(s) : "";
+  style.textContent = s.enabled ? buildCss(s) : offCss(s);
   if (!style.isConnected) (document.head || document.documentElement).appendChild(style);
 }
 
@@ -193,6 +208,7 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
           warn(t("main.halted"));
           feedDecided = false;
           syncFeed();
+          mountHaltNotice();
         },
         refreshTokens: async () => {
           harvest.refresh?.();
@@ -220,9 +236,27 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
   let cleaner = null;
   let skin = null;
   let feedView = null;
-  let feedKey = null; // which feed the view shows: "recent|friends,groups" / "top" / "filter:friends"
+  let feedKey = null; // what the view was built from (feedSignature): another value means a rebuild
   let currentFeed = null;
   let feedDecided = false;
+  let feedBroken = false; // a whole first page failed for good: Home shows Facebook's feed for this page's lifetime
+  let homeNeedsReload = false; // Home has no usable query descriptor: links to it load the page afresh (§3.1)
+  let haltNotice = null;
+
+  // ARCHITECTURE §3.1: while Home cannot have our feed for want of a query descriptor, "News Feed" (and every
+  // other link to Home) does a full page load, which brings the preloader with it.
+  const shellNavigator = {
+    go(url, opts) {
+      let home = false;
+      try {
+        const u = new URL(url, location.href);
+        home = homeNeedsReload && /(^|\.)facebook\.com$/.test(u.hostname) && classifyRoute(u).mode === "home";
+      } catch {
+        home = false;
+      }
+      return navigator.go(url, home ? { ...opts, hard: true } : opts);
+    },
+  };
 
   const openSettings = safe("settings-dialog", () =>
     openSettingsDialog({
@@ -258,21 +292,42 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
     return { mode: "recent", sources, key: `recent|${sources.join(",")}` };
   }
 
+  /**
+   * Everything the feed view is built from: which feed (spec.key, which already covers the mode where it
+   * matters), every other feed setting and the language. A setting changed anywhere (the dialog, another tab,
+   * on another page) shows up as a different signature the next time Home is synced.
+   */
+  function feedSignature(spec, s) {
+    return JSON.stringify([spec.key, { ...s.feed, mode: null }, s.language]);
+  }
+
   function getFeed(mode, sources) {
     const s = S();
     const spec = feedSpec(route, s);
     const names = mode === "top" ? ["top"] : route.filter ? spec.sources : sources?.length ? sources : spec.sources;
     const scale = Math.max(2, Math.round(globalThis.devicePixelRatio || 1));
+    // performance.now() is the time since this document loaded: the age of its SSR first page.
+    const ssr = (globalThis.performance?.now?.() ?? 0) < SSR_MAX_AGE_MS;
+    // The feed this one replaces must not keep the single request queue busy.
+    currentFeed?.cancel?.();
     const feed = createMergedFeed({
-      sources: names.map((name) => createFeedSource({ name, client, ops, harvest, classifier, scale })),
+      sources: names.map((name) => createFeedSource({ name, client, ops, harvest, classifier, scale, ssr })),
       pageSize: s.feed.pageSize,
       keywords: s.feed.keywords,
     });
     // The right column's "ads removed" box should move as soon as a page of stories lands.
     const more = feed.more;
+    let delivered = false;
     feed.more = async (...args) => {
       try {
-        return await more(...args);
+        const stories = await more(...args);
+        delivered = true;
+        return stories;
+      } catch (err) {
+        // Every source failed its first page for good (every doc_id known was retired by a deploy, the variables
+        // no longer fit, ...): "Try Again" cannot help, Facebook's own feed can (ARCHITECTURE §3.1).
+        if (!delivered && feed === currentFeed && !TRANSIENT_KINDS.has(err?.kind)) fallBackToNative(err);
+        throw err;
       } finally {
         shell?.update?.({});
       }
@@ -281,20 +336,49 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
     return feed;
   }
 
-  function openComposer() {
+  function fallBackToNative(err) {
+    feedBroken = true;
+    health.count("main.feed-fallback");
+    health.fact("feedFallback", err?.kind || "error");
+    currentFeed?.cancel?.();
+    feedView?.destroy?.();
+    feedView = null;
+    feedKey = null;
+    syncFeed();
+  }
+
+  /** Facebook's "What's on your mind?" button (dom-chrome §5.2): by its region's label, else language-free. */
+  function composerButton() {
     for (const sel of COMPOSER_SELECTORS) {
       const btn = document.querySelector(sel);
-      if (btn) {
-        btn.click();
-        return;
-      }
+      if (btn) return btn;
     }
-    // Feeds-filter routes have no composer: go home, where Facebook renders one, and open it there.
+    // S4: the composer block is the element right before the Stories block in the feed column.
+    const main = findMain();
+    const tray = main?.querySelector('[data-focus-target="stories_tray"]');
+    for (let el = tray; el && el !== main; el = el.parentElement) {
+      const prev = el.previousElementSibling;
+      const region = prev?.matches('[role="region"]') ? prev : prev?.querySelector('[role="region"]');
+      const btn = region?.querySelector('[role="button"]');
+      if (btn) return btn;
+    }
+    return null;
+  }
+
+  function openComposer() {
+    const found = composerButton();
+    if (found) {
+      found.click();
+      return;
+    }
     health.count("main.composer-miss");
+    // Already on the plain home page: navigating there again would only re-render it.
+    if (route.mode === "home" && !route.filter && !route.sk) return;
+    // Feeds-filter routes have no composer: go home, where Facebook renders one, and open it there.
     navigator.go("https://www.facebook.com/");
     let tries = 0;
     const timer = setInterval(() => {
-      const btn = COMPOSER_SELECTORS.map((sel) => document.querySelector(sel)).find(Boolean);
+      const btn = composerButton();
       if (btn || ++tries > 20) {
         clearInterval(timer);
         btn?.click();
@@ -307,7 +391,7 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
     return id ? { name: id.name, avatar: id.avatar, url: id.url } : null;
   }
 
-  function buildFeedView(spec) {
+  function buildFeedView(spec, key) {
     feedView?.destroy?.();
     let seen = lastSeen;
     feedView = createFeedView({
@@ -329,22 +413,26 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
       getFeed,
       mode: spec.mode,
       onModeChange: (mode) => {
-        settings.update({ feed: { mode } });
-        if (route.filter || route.sk) navigator.go("https://www.facebook.com/");
+        settings.update({ feed: { mode } }); // settings.get() has the new mode at once
+        const leave = !!(route.filter || route.sk);
+        // The view reloads itself in the new mode: neither the settings echo nor the way back to "/" rebuilds it.
+        feedKey = feedSignature(feedSpec(leave ? classifyRoute("/") : route, S()), S());
+        if (leave) navigator.go("https://www.facebook.com/");
       },
       openComposer,
       hiddenStats: () => currentFeed?.stats?.() ?? {},
       onDismissWelcome: () => settings.update({ state: { welcomeDismissed: true } }),
     });
-    feedKey = spec.key;
+    feedKey = key;
   }
 
   /** Can we render this feed ourselves? Needs the home-feed query descriptor with its variables. */
   async function canUseOurFeed() {
     if (!client || !ops || client.halted) return false;
     if (!S().look.shell || signedOut || !harvest.tokens.userId) return false;
-    const op = await ops.get(FEED_QUERY).catch(() => null);
-    return !!op?.variables;
+    const op = feedBroken ? null : await ops.get(FEED_QUERY).catch(() => null);
+    homeNeedsReload = !op?.variables;
+    return !homeNeedsReload;
   }
 
   const syncFeed = safe("feed", async () => {
@@ -353,22 +441,31 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
       html.removeAttribute("data-mfga-feed");
       return;
     }
-    if (!feedDecided) html.setAttribute("data-mfga-feed", "pending");
-    await harvest?.ready?.catch?.(() => {});
-    const ours = await canUseOurFeed();
-    feedDecided = true;
-    if (route.mode !== "home") return;
-    if (!ours) {
-      html.setAttribute("data-mfga-feed", "native");
-      health.fact("feed", "native");
-      return;
+    try {
+      if (!feedDecided) html.setAttribute("data-mfga-feed", "pending");
+      await harvest?.ready?.catch?.(() => {});
+      const ours = await canUseOurFeed();
+      feedDecided = true;
+      if (route.mode !== "home") return;
+      if (!ours) {
+        html.setAttribute("data-mfga-feed", "native");
+        health.fact("feed", "native");
+        return;
+      }
+      const spec = feedSpec(route, S());
+      const key = feedSignature(spec, S());
+      if (!feedView || feedKey !== key) buildFeedView(spec, key);
+      mountFeed();
+      html.setAttribute("data-mfga-feed", "ours");
+      health.fact("feed", "ours");
+    } catch (err) {
+      // Fail open: "pending" would keep Facebook's column hidden with nothing in its place.
+      if (route.mode === "home") html.setAttribute("data-mfga-feed", "native");
+      throw err;
     }
-    const spec = feedSpec(route, S());
-    if (!feedView || feedKey !== spec.key) buildFeedView(spec);
-    mountFeed();
-    html.setAttribute("data-mfga-feed", "ours");
-    health.fact("feed", "ours");
   });
+  // Settings arrive in bursts (one checkbox after another): build the feed once, after the last one.
+  const syncFeedSoon = debounce(() => syncFeed(), FEED_REBUILD_DELAY_MS);
 
   /** Keeps #mfga-stream as the first child of Facebook's main column (it is re-rendered on navigation). */
   function mountFeed() {
@@ -378,11 +475,24 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
     if (feedView.el.parentNode !== main || main.firstElementChild !== feedView.el) main.prepend(feedView.el);
   }
 
-  // Facebook replaces the home column on SPA navigations and forced reloads: re-attach our stream.
+  /** On Home after a checkpoint halt: why Facebook's own feed is back ("Fail open, visibly"). */
+  function mountHaltNotice() {
+    if (!client?.halted || route.mode !== "home" || !S().enabled) {
+      haltNotice?.remove();
+      return;
+    }
+    haltNotice ??= h("div#mfga-halted.mfga-ui.mfga-notice", { role: "status" }, t("main.halted"));
+    const main = findMain();
+    if (main && haltNotice.parentNode !== main) main.prepend(haltNotice);
+  }
+
+  // Facebook replaces the home column on SPA navigations and forced reloads: re-attach our stream. Its own
+  // module name: a failed syncFeed() ("feed") must not also stop this.
   const remount = safe(
-    "feed",
+    "feed.remount",
     () => {
       if (route.mode === "home" && document.documentElement.getAttribute("data-mfga-feed") === "ours") mountFeed();
+      mountHaltNotice();
     },
     { disableOnError: false },
   );
@@ -408,7 +518,23 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
     if (route.mode !== "home") {
       feedView?.el?.remove();
     }
+    mountHaltNotice();
     syncFeed();
+  }
+
+  /** The 2010 shell, once the 2010 layout is on (at start, or later from the settings). */
+  function ensureShell() {
+    if (shell || signedOut || !S().look.shell) return;
+    shell = safe("shell", () =>
+      createShell({
+        settings,
+        reader,
+        navigator: shellNavigator,
+        openSettings,
+        stats: () => removalStats(currentFeed, cleaner),
+        route,
+      }),
+    )();
   }
 
   function start() {
@@ -416,20 +542,8 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
     started = true;
     setLocale(S().language);
     paint(style, S());
-    const s = S();
     layout.apply(route);
-    if (s.look.shell && !signedOut) {
-      shell = safe("shell", () =>
-        createShell({
-          settings,
-          reader,
-          navigator,
-          openSettings,
-          stats: () => removalStats(currentFeed, cleaner),
-          route,
-        }),
-      )();
-    }
+    ensureShell();
     cleaner = safe("cleaner", () => startCleaner({ settings, route }))();
     skin = safe("skin", () => startSkin({ settings }))();
     onRouteChange((next) => onRoute(next));
@@ -449,25 +563,21 @@ function createApp({ platform, settings, harvest, style, lastSeen }) {
     if (!next.enabled) {
       layout.apply(route);
       document.documentElement.removeAttribute("data-mfga-feed");
+      // Our stream sits in Facebook's column: take it out rather than rely on a stylesheet (kept for a restart).
+      feedView?.el?.remove();
+      haltNotice?.remove();
       return;
     }
     if (!started) return start();
     layout.apply(route);
+    ensureShell();
+    const resumed = !prev.enabled;
+    if (resumed) shell?.update?.({ route });
     const feedChanged =
-      JSON.stringify(next.feed) !== JSON.stringify(prev.feed) || next.look.shell !== prev.look.shell || next.language !== prev.language;
-    if (!feedChanged || route.mode !== "home") return;
-    // "Top News · Most Recent" in the view already reloaded itself: only remember which feed it shows.
-    const onlyMode =
-      next.feed.mode !== prev.feed.mode &&
-      JSON.stringify({ ...next.feed, mode: 0 }) === JSON.stringify({ ...prev.feed, mode: 0 }) &&
-      next.look.shell === prev.look.shell &&
-      next.language === prev.language;
-    if (onlyMode && feedView) {
-      feedKey = feedSpec(route, next).key;
-      return;
-    }
-    feedKey = null; // rebuild with the new sources / keywords / language
-    syncFeed();
+      resumed || JSON.stringify(next.feed) !== JSON.stringify(prev.feed) || next.look.shell !== prev.look.shell || next.language !== prev.language;
+    // syncFeed() rebuilds only when what the view was built from changed (feedSignature): the view's own
+    // "Top News · Most Recent" switch has already reloaded it. Away from Home the next visit does the same.
+    if (feedChanged && route.mode === "home") syncFeedSoon();
   }
 
   return { start, onSettings, openSettings };

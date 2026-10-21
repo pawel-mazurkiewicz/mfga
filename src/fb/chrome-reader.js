@@ -365,12 +365,16 @@ export function createChromeReader({ platform, identityHint = null } = {}) {
   let lastRefresh = 0;
   let persistTimer = 0;
 
-  const readLive = () => {
-    // Only the plain Home layout has the rails; the Feeds filter routes have other panels in their place.
+  // Only the plain Home layout has the rails; the Feeds filter routes have other panels in their place.
+  const onRailRoute = () => {
     const route = classifyRoute(location);
-    const onRailRoute = route.mode === "home" && !route.filter;
-    const left = onRailRoute ? findLeftRail(document) : null;
-    const right = onRailRoute ? findRightRail(document) : null;
+    return route.mode === "home" && !route.filter;
+  };
+
+  const readLive = () => {
+    const rails = onRailRoute();
+    const left = rails ? findLeftRail(document) : null;
+    const right = rails ? findRightRail(document) : null;
     const userId = readCookie("i_user", document) || readCookie("c_user", document);
     const parsed = left ? shortcutsFromRows(readRailRows(left), { userId }) : null;
     const rail = parsed?.me ? parsed : null; // the Shortcuts rail always starts with the viewer
@@ -453,9 +457,12 @@ export function createChromeReader({ platform, identityHint = null } = {}) {
     }, wait);
   };
 
-  // Observe only the banner and the rails (never the feed); re-target when Facebook re-renders them.
+  // Observe only the banner and the rails (never the feed); re-target when Facebook re-renders them. The rails
+  // are looked up only where readLive reads them: each lookup walks the whole document, and on a long native
+  // feed (the groups feed, ~100k elements) two of them every rescan cost ~5 ms a second for nothing.
   const retarget = () => {
-    const next = [findBanner(document), findLeftRail(document), findRightRail(document)].filter(Boolean);
+    const rails = onRailRoute() ? [findLeftRail(document), findRightRail(document)] : [];
+    const next = [findBanner(document), ...rails].filter(Boolean);
     if (next.length === targets.length && next.every((t, i) => t === targets[i])) return false;
     targets = next;
     observer.disconnect();

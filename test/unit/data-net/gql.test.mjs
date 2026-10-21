@@ -9,12 +9,11 @@ const { GqlError, buildForm, createGqlClient, errorKind, jazoest } = gql;
 const OK = jsonl({ data: { viewer: { id: "1" } }, extensions: { is_final: true } });
 const errorBody = (code, extra = {}) => JSON.stringify({ errors: [{ message: `error ${code}`, code, severity: "CRITICAL", ...extra }], data: null });
 
-function setup({ reply = () => response(OK), harvest = fakeHarvest(), minGapMs = 0, delay = 0, ...opts } = {}) {
-  const clock = fakeClock();
+function setup({ reply = () => response(OK), harvest = fakeHarvest(), minGapMs = 0, delay = 0, storage, clock = fakeClock(), ...opts } = {}) {
   const net = fakeFetch(reply, { delay });
   const halts = [];
   const client = createGqlClient({
-    platform: { fetch: net.fetch },
+    platform: storage ? { fetch: net.fetch, storage } : { fetch: net.fetch },
     harvest,
     minGapMs,
     onHalt: (reason) => halts.push(reason),
@@ -405,12 +404,191 @@ test("account-warning text in an envelope halts", async () => {
   assert.deepEqual(halts, ["account-warning"]);
 });
 
-test("a stalled response times out as a network error and frees the queue", async () => {
-  const { client, net } = setup({ timeoutMs: 20, reply: (call, i) => (i === 0 ? new Promise(() => {}) : response(OK)) });
+test("a stalled response times out as a network error and frees the queue (after stallHoldMs at the latest)", async () => {
+  const { client, net } = setup({ timeoutMs: 20, stallHoldMs: 30, reply: (call, i) => (i === 0 ? new Promise(() => {}) : response(OK)) });
   const [stalled, next] = await Promise.allSettled([client.request("Op", "11111", {}), client.request("Op", "11111", {})]);
   assert.equal(stalled.status, "rejected");
   assert.equal(stalled.reason.kind, "network");
   assert.equal(next.status, "fulfilled");
   assert.equal(net.calls.length, 2);
   assert.equal(client.stats().inFlight, false);
+});
+
+test("a timed-out request keeps the queue closed until its fetch is over: never two in flight", async () => {
+  let finishFirst;
+  const first = new Promise((resolve) => (finishFirst = resolve));
+  const { client, net } = setup({ timeoutMs: 20, reply: (call, i) => (i === 0 ? first : response(OK)) });
+  const a = client.request("Op", "11111", {});
+  const b = client.request("Op", "11111", {});
+  await rejectsKind(a, "network");
+  await new Promise((r) => setTimeout(r, 60));
+  assert.equal(net.calls.length, 1, "the next request waits for the stalled fetch");
+  assert.equal(client.stats().inFlight, true);
+  finishFirst(response(OK));
+  await b;
+  assert.equal(net.calls.length, 2);
+  assert.equal(net.maxInFlight, 1);
+});
+
+// ---- the shared guard: halts and cooldowns reach every tab and survive reloads (platform.storage) ----
+
+function memoryStorage() {
+  const map = new Map();
+  return {
+    map,
+    async get(key) {
+      return map.has(key) ? structuredClone(map.get(key)) : undefined;
+    },
+    async set(key, value) {
+      map.set(key, structuredClone(value));
+    },
+    onChange() {},
+  };
+}
+
+const tick = () => new Promise((r) => setTimeout(r, 0));
+const CHECKPOINT_REPLY = () => response("<html></html>", { url: "https://www.facebook.com/checkpoint/1501092823525282/" });
+
+test("a halt is recorded: another tab, and the page after a reload, send nothing and report it", async () => {
+  const storage = memoryStorage();
+  const clock = fakeClock();
+  const tabA = setup({ storage, clock, reply: CHECKPOINT_REPLY });
+  await rejectsKind(tabA.client.request("Op", "11111", {}), "checkpoint");
+  await tick();
+  assert.equal(storage.map.get(gql.GUARD_STORAGE_KEY).halt.reason, "checkpoint-redirect");
+
+  // A tab that was already open: its next request is refused before anything is sent.
+  const tabB = setup({ storage, clock });
+  await rejectsKind(tabB.client.request("Op", "11111", {}), "checkpoint");
+  assert.equal(tabB.net.calls.length, 0);
+  assert.deepEqual(tabB.halts, ["checkpoint-redirect"], "the app hears about it (Home goes back to Facebook's feed)");
+
+  // A reload: the new client knows at once, before any request (Home never shows our feed); the app hears about
+  // it when a request is refused, so a page with MFGA switched off is left alone.
+  const reloaded = setup({ storage, clock });
+  await tick();
+  assert.equal(reloaded.client.halted, true);
+  assert.deepEqual(reloaded.halts, []);
+  await rejectsKind(reloaded.client.request("Op", "11111", {}), "checkpoint");
+  await rejectsKind(reloaded.client.request("Op", "11111", {}), "checkpoint");
+  assert.deepEqual(reloaded.halts, ["checkpoint-redirect"]);
+  assert.equal(reloaded.net.calls.length, 0);
+
+  // Six hours later MFGA may try again.
+  clock.advance(6 * 3600e3 + 1);
+  const later = setup({ storage, clock });
+  assert.deepEqual((await later.client.request("Op", "11111", {})).data, { viewer: { id: "1" } });
+  assert.deepEqual(later.halts, []);
+});
+
+test("a halt recorded while another tab's request was out survives that tab's own writes", async () => {
+  const storage = memoryStorage();
+  const clock = fakeClock();
+  const tabB = setup({ storage, clock, reply: () => response("") }); // tab B gets soft-blocked...
+  const pending = tabB.client.request("Op", "11111", {});
+  const tabA = setup({ storage, clock, reply: CHECKPOINT_REPLY }); // ...while tab A hits the checkpoint
+  await rejectsKind(tabA.client.request("Op", "11111", {}), "checkpoint");
+  await tick();
+  await rejectsKind(pending, "soft-block");
+  await tick();
+  const record = storage.map.get(gql.GUARD_STORAGE_KEY);
+  assert.equal(record.halt?.reason, "checkpoint-redirect");
+  assert.ok(record.cooldownUntil > clock.now());
+});
+
+test("a rate-limit cooldown is shared with other tabs and later pages until it ends", async () => {
+  const storage = memoryStorage();
+  const clock = fakeClock();
+  const tabA = setup({ storage, clock, reply: () => response("") });
+  await rejectsKind(tabA.client.request("Op", "11111", {}), "soft-block");
+  await tick();
+  const tabB = setup({ storage, clock });
+  await rejectsKind(tabB.client.request("Op", "11111", {}), "rate");
+  assert.equal(tabB.net.calls.length, 0, "nothing is sent while another tab cools down");
+  assert.deepEqual(tabB.halts, [], "a cooldown is not a halt");
+  clock.advance(60e3);
+  await tabB.client.request("Op", "11111", {});
+  assert.equal(tabB.net.calls.length, 1);
+});
+
+test("the strike count is shared: a soft block on the next page backs off longer", async () => {
+  const storage = memoryStorage();
+  const clock = fakeClock();
+  const first = setup({ storage, clock, reply: () => response("") });
+  await rejectsKind(first.client.request("Op", "11111", {}), "soft-block");
+  await tick();
+  clock.advance(60e3);
+  const reloaded = setup({ storage, clock, reply: () => response("") });
+  await rejectsKind(reloaded.client.request("Op", "11111", {}), "soft-block");
+  assert.equal(reloaded.client.stats().cooldownMs, 120e3);
+});
+
+test("stopOnCheckpoint: false neither records nor obeys a stored halt, and keeps one it finds", async () => {
+  const storage = memoryStorage();
+  const clock = fakeClock();
+  const tabA = setup({ storage, clock, reply: CHECKPOINT_REPLY });
+  await rejectsKind(tabA.client.request("Op", "11111", {}), "checkpoint");
+  await tick();
+  const relaxed = setup({ storage, clock, stopOnCheckpoint: false, reply: () => response("") });
+  await rejectsKind(relaxed.client.request("Op", "11111", {}), "soft-block");
+  await tick();
+  assert.equal(relaxed.client.halted, false);
+  assert.equal(storage.map.get(gql.GUARD_STORAGE_KEY).halt.reason, "checkpoint-redirect");
+});
+
+test("a broken or implausible stored record is ignored", async () => {
+  const clock = fakeClock();
+  for (const value of ["junk", { halt: { reason: 1, at: clock.now() } }, { halt: { reason: "x", at: clock.now() + 86400e3 } }, { cooldownUntil: clock.now() + 86400e3 }]) {
+    const storage = memoryStorage();
+    storage.map.set(gql.GUARD_STORAGE_KEY, value);
+    const { client, net } = setup({ storage, clock });
+    await client.request("Op", "11111", {});
+    assert.equal(net.calls.length, 1, JSON.stringify(value));
+  }
+});
+
+test("storage that fails never blocks requests", async () => {
+  const storage = { get: async () => Promise.reject(new Error("quota")), set: async () => Promise.reject(new Error("quota")), onChange() {} };
+  const { client, net } = setup({ storage, reply: (c, i) => (i === 0 ? response("") : response(OK)) });
+  await rejectsKind(client.request("Op", "11111", {}), "soft-block");
+  assert.equal(net.calls.length, 1);
+});
+
+// ---- circuit breaker ----
+
+test("three failed requests in a row pause the client instead of sending more doomed requests", async () => {
+  const { client, net, clock } = setup({ reply: () => response("oops", { status: 500 }) });
+  for (let i = 0; i < 3; i++) await rejectsKind(client.request("Op", "11111", {}), "server");
+  assert.equal(net.calls.length, 3);
+  await rejectsKind(client.request("Op", "11111", {}), "server");
+  await rejectsKind(client.request("Op", "11111", {}), "server");
+  assert.equal(net.calls.length, 3, "nothing is sent while paused");
+  assert.ok(client.stats().pausedMs > 0);
+  clock.advance(3 * 60e3);
+  await rejectsKind(client.request("Op", "11111", {}), "server");
+  assert.equal(net.calls.length, 4, "one request again after the pause");
+});
+
+test("an expired fb_dtsg with no fresher one stops after three requests", async () => {
+  const { client, net } = setup({ reply: () => response(errorBody(1357051)), refreshTokens: () => {} });
+  for (let i = 0; i < 5; i++) await rejectsKind(client.request("Op", "11111", {}), "token");
+  assert.equal(net.calls.length, 3);
+});
+
+test("a success resets the breaker; per-operation errors do not count", async () => {
+  const replies = [500, 500, "ok", 500, 500, 1675012, 1570245, "ok", 500];
+  const { client, net } = setup({
+    reply: (c, i) => (replies[i] === "ok" ? response(OK) : replies[i] === 500 ? response("x", { status: 500 }) : response(errorBody(replies[i]))),
+  });
+  for (let i = 0; i < replies.length; i++) await client.request("Op", "11111", {}).catch(() => {});
+  assert.equal(net.calls.length, replies.length);
+  assert.equal(client.stats().pausedMs, 0);
+});
+
+test("a login redirect on the way to a checkpoint halts", async () => {
+  const { client, halts } = setup({
+    reply: () => response("<html></html>", { url: "https://www.facebook.com/login.php?next=https%3A%2F%2Fwww.facebook.com%2Fcheckpoint%2F1501092823525282%2F" }),
+  });
+  await rejectsKind(client.request("Op", "11111", {}), "checkpoint");
+  assert.deepEqual(halts, ["checkpoint-redirect"]);
 });

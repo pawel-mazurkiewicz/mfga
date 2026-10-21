@@ -22,6 +22,10 @@ const MAX_VARIABLES_CHARS = 64 * 1024;
 const MAX_AGE_MS = 30 * 86400e3; // like the content script's op cache (data/ops.js)
 
 let learned = null; // name -> { docId, variables, seenAt }
+// MFGA's own replays, announced by the content script right before it sends them ("mfga:ownRequest"): they are
+// not what Facebook itself sends today, and learning them would make an old doc_id look fresh.
+const OWN_TTL_MS = 60e3;
+const own = new Map(); // "tabId|name|docId" -> announcement times
 let loading = null;
 let saveTimer = 0;
 
@@ -80,6 +84,30 @@ function formField(body, name) {
   return undefined;
 }
 
+const ownKey = (tabId, name, docId) => `${tabId}|${name}|${docId}`;
+
+function announceOwn(tabId, name, docId) {
+  const now = Date.now();
+  for (const [key, times] of own) {
+    const live = times.filter((t) => now - t < OWN_TTL_MS);
+    if (live.length) own.set(key, live);
+    else own.delete(key);
+  }
+  const key = ownKey(tabId, name, docId);
+  own.set(key, [...(own.get(key) || []), now]);
+}
+
+/** True (once per announcement) when this request is one MFGA announced as its own. */
+function takeOwn(tabId, name, docId) {
+  const key = ownKey(tabId, name, docId);
+  const times = (own.get(key) || []).filter((t) => Date.now() - t < OWN_TTL_MS);
+  if (!times.length) return false;
+  times.shift();
+  if (times.length) own.set(key, times);
+  else own.delete(key);
+  return true;
+}
+
 function onRequest(details) {
   // Private windows (Firefox reports them; Chrome keeps spanning-mode extensions' storage shared with them).
   if (details.method !== "POST" || !details.requestBody || details.incognito) return;
@@ -87,6 +115,7 @@ function onRequest(details) {
   if (!name || !ALLOWED_OPS.has(name)) return;
   const docId = formField(details.requestBody, "doc_id");
   if (!docId || !/^\d{5,25}$/.test(docId)) return;
+  if (takeOwn(details.tabId, name, docId)) return;
   const raw = formField(details.requestBody, "variables");
   let variables = null;
   if (raw && raw.length <= MAX_VARIABLES_CHARS) {
@@ -110,10 +139,16 @@ api.webRequest.onBeforeRequest.addListener(
   ["requestBody"],
 );
 
-api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg && msg.type === "mfga:getLearnedOps") {
     load().then((ops) => sendResponse(ops));
     return true;
+  }
+  if (msg && msg.type === "mfga:ownRequest") {
+    const tabId = sender && sender.tab && sender.tab.id;
+    if (tabId != null && typeof msg.name === "string" && typeof msg.docId === "string") announceOwn(tabId, msg.name, msg.docId);
+    sendResponse(true);
+    return false;
   }
   return false;
 });

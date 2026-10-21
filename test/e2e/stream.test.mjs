@@ -351,7 +351,7 @@ describe("stream: comments", () => {
     assert.deepEqual((await calls(page, "comment")).map((c) => c.args), [["1002", "So sorry\nBig hugs"]]);
     assert.equal(await box.inputValue(), "");
     const last = s.locator(".mfga-ufi-comment").last();
-    assert.equal(await textOf(last), "J.D. Hodges So sorry Big hugs 0 seconds ago");
+    assert.equal(await textOf(last), "J.D. Hodges So sorry Big hugs a few seconds ago");
     assert.equal(await s.locator(".mfga-ufi-viewall").isVisible(), false, "the new comment joins the preview");
     await box.evaluate((el) => el.blur());
     assert.doesNotMatch(await s.locator(".mfga-ufi-add").getAttribute("class"), /mfga-ufi-add-active/);
@@ -395,11 +395,11 @@ describe("stream: comments", () => {
     const posted = s.locator(".mfga-ufi-comment");
     assert.equal(await posted.locator(".mfga-ufi-pic img").getAttribute("src"), "https://scontent.fixture.fbcdn.net/jd-50.png", "missing echo fields come from ctx.me");
     assert.equal(await posted.locator(".mfga-ufi-actor").getAttribute("href"), "https://www.facebook.com/jd.hodges");
-    assert.equal(await textOf(posted.locator(".mfga-ufi-comment-meta")), "0 seconds ago");
+    assert.equal(await textOf(posted.locator(".mfga-ufi-comment-meta")), "a few seconds ago");
     await finish(page);
   });
 
-  test("View all N comments pages through the comments; previews load once and only after 1s", async () => {
+  test("View all N comments pages through the comments; previews load once and only after 2s", async () => {
     const page = await openStream({ stories: "gallery" }, { viewport: { width: 994, height: 700 } });
     await setCtl(page, { pageSize: 20 });
     await page.locator(".mfga-feed-more").click();
@@ -443,7 +443,8 @@ describe("stream: comments", () => {
   test("failed comment loads show the error on click but stay silent for previews", async () => {
     const page = await openStream({ stories: "replica" });
     await setCtl(page, { failComments: true });
-    await page.waitForTimeout(1400);
+    await page.waitForFunction(() => window.__calls.some((c) => c.name === "comments"));
+    await page.waitForTimeout(300);
     assert.equal(await page.locator(".mfga-ufi-error:not([hidden])").count(), 0, "preview failures are silent");
     const s = story(page, "1001");
     await s.locator(".mfga-ufi-viewall-link").click();
@@ -453,6 +454,24 @@ describe("stream: comments", () => {
     await s.locator(".mfga-ufi-viewall-link").click();
     await page.waitForFunction(() => document.querySelectorAll('.mfga-story[data-key="1001"] .mfga-ufi-comment').length === 4);
     assert.equal(await s.locator(".mfga-ufi-error").isVisible(), false);
+    await finish(page);
+  });
+
+  test("a failed preview pauses the previews of the stories read next; clicks still load", async () => {
+    const page = await openStream({ stories: "gallery" }, { viewport: { width: 994, height: 700 } });
+    await setCtl(page, { failComments: true, pageSize: 20 });
+    await page.locator(".mfga-feed-more").click();
+    await page.waitForSelector(".mfga-feed-end");
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.waitForFunction(() => window.__calls.some((c) => c.name === "comments" && c.args[0] === "2001"));
+    await page.waitForTimeout(300);
+    const s = story(page, "2008");
+    await s.locator(".mfga-ufi").scrollIntoViewIfNeeded();
+    await page.waitForTimeout(3000);
+    assert.equal((await calls(page, "comments")).filter((c) => c.args[0] === "2008").length, 0, "no preview while Facebook is failing");
+    await setCtl(page, { failComments: false });
+    await s.locator(".mfga-ufi-viewall-link").click();
+    await page.waitForFunction(() => document.querySelectorAll('.mfga-story[data-key="2008"] .mfga-ufi-comment').length === 10);
     await finish(page);
   });
 
@@ -533,6 +552,44 @@ describe("stream: feed view", () => {
     }
     await page.waitForSelector(".mfga-feed-end");
     assert.equal(await page.locator(".mfga-story").count(), 11);
+    await finish(page);
+  });
+
+  test("auto-load stops after a page that adds no stories and waits for the user", async () => {
+    // Every story filtered out (a broad keyword, or nothing Facebook sent parsed): the end of the stream stays in
+    // view, but nothing is fetched until the user asks again.
+    const page = await browser.newPage({ html: PAGE_HTML });
+    await page.addScriptTag({ content: script });
+    await setCtl(page, { emptyPages: true });
+    await page.evaluate(() => window.mfgaStream.mount({ stories: "all", autoLoad: true, previewComments: false }));
+    await page.locator(".mfga-feed-more:not(.mfga-loading)").waitFor();
+    await page.waitForTimeout(1500);
+    const more = async () => (await calls(page, "more")).length;
+    assert.equal(await more(), 1, "no unattended fetching");
+    await page.locator(".mfga-feed-more").click();
+    await page.locator(".mfga-feed-more:not(.mfga-loading)").waitFor();
+    await page.waitForTimeout(800);
+    assert.equal(await more(), 2, "one page per click");
+    await setCtl(page, { emptyPages: false });
+    await page.locator(".mfga-feed-more").click();
+    await page.waitForFunction(() => document.querySelectorAll(".mfga-story").length >= 4);
+    await finish(page);
+  });
+
+  test("auto-load fills a tall screen with at most two pages before the user scrolls or clicks", async () => {
+    const page = await browser.newPage({ html: PAGE_HTML });
+    await page.setViewportSize({ width: 994, height: 3000 });
+    await page.addScriptTag({ content: script });
+    await setCtl(page, { pageSize: 1 });
+    await page.evaluate(() => window.mfgaStream.mount({ stories: "all", autoLoad: true, previewComments: false }));
+    await page.waitForTimeout(1500);
+    const more = async () => (await calls(page, "more")).length;
+    assert.equal(await more(), 3, "first page + two automatic pages");
+    assert.equal(await page.locator(".mfga-story").count(), 3);
+    await page.locator(".mfga-feed-more:not(.mfga-loading)").click();
+    await page.waitForTimeout(1500);
+    assert.equal(await more(), 6, "a click re-arms the same short run");
+    assert.equal(await page.locator(".mfga-story").count(), 6);
     await finish(page);
   });
 

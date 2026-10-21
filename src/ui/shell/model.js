@@ -78,6 +78,9 @@ export function leftNavModel({ route, identity, counts, shortcuts, contacts }) {
             label: t(`nav.feed.${key}`),
           }))
         : [],
+    // 2010's side nav kept an item's sub-list closed unless the item was "open" (uiSideNav: `ul{display:none}`,
+    // `.open ul{display:block}`): the 2010 Home shows News Feed alone; a filter route opens the list.
+    feedsOpen: Boolean(filter),
     groups: groups.map(toRow),
     pages: pages.map(toRow),
     chat: (contacts || []).filter((c) => c.online).slice(0, MAX_CHAT).map((c) => ({ label: c.name, href: c.url })),

@@ -72,6 +72,26 @@ test("leftNavModel on the groups feed selects Groups; unknown data degrades quie
   assert.equal(m.apps.find((i) => i.key === "pages").arrow, false);
 });
 
+test("leftNavModel: News Feed's filters stay closed on Home and open on a filter route, as 2010's side nav", () => {
+  const home = leftNavModel({ route: { mode: "home", filter: null }, identity, counts: null, shortcuts, contacts });
+  assert.deepEqual(home.feeds.map((f) => [f.key, f.href, f.selected]), [
+    ["feed_friends", "https://www.facebook.com/?filter=friends&sk=h_chr", false],
+    ["feed_groups", "https://www.facebook.com/?filter=groups&sk=h_chr", false],
+    ["feed_pages", "https://www.facebook.com/?filter=pages&sk=h_chr", false],
+    ["feed_favorites", "https://www.facebook.com/?filter=favorites&sk=h_chr", false],
+  ]);
+  assert.equal(home.feedsOpen, false, "the 2010 Home shows News Feed alone");
+  assert.equal(home.primary[0].selected, true);
+
+  const friends = leftNavModel({ route: { mode: "home", filter: "friends" }, identity, counts: null, shortcuts, contacts });
+  assert.equal(friends.feedsOpen, true);
+  assert.equal(friends.primary[0].selected, false);
+  assert.deepEqual(friends.feeds.filter((f) => f.selected).map((f) => f.label), ["Friends"]);
+
+  const page = leftNavModel({ route: { mode: "page", filter: null }, identity, counts: null, shortcuts, contacts });
+  assert.deepEqual([page.feeds, page.feedsOpen], [[], false]);
+});
+
 test("leftNavModel in Polish uses 2010 wording", () => {
   setLocale("pl");
   const m = leftNavModel({ route: { mode: "home" }, identity, counts: null, shortcuts, contacts });

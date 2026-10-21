@@ -9,9 +9,13 @@ import { chronological, feedbackState, formatCount, isReacted, likeSentence, mer
 import { avatar, guard, link, linkButton, nowMs, richText, sep, settingsOf } from "./parts.js";
 import { timeNode } from "./time.js";
 import { whenVisibleFor } from "./visibility.js";
+import { createPreviewBudget } from "./preview-budget.js";
 
 const PREVIEW_COUNT = 2;
-const PREVIEW_DELAY_MS = 1000;
+// A story's comments preview loads once it has been on screen this long: read, not scrolled past.
+const PREVIEW_DELAY_MS = 2000;
+// One ration for the whole page: every story of every feed view draws on it (preview-budget.js).
+const previewBudget = createPreviewBudget();
 
 /** Runs an action, turning exceptions and malformed results into {ok:false}. */
 async function attempt(fn) {
@@ -80,11 +84,23 @@ export function createFeedback(story, ctx) {
   const commentLink = canComment ? linkButton(t("story.comment"), openComposer, "mfga-story-comment") : null;
 
   let cancelPreview = null;
-  if (settingsOf(ctx).feed?.previewComments !== false && state.total > 0 && typeof ctx.actions?.comments === "function") {
-    cancelPreview = whenVisibleFor(ufi, PREVIEW_DELAY_MS, guard(() => loadComments(true)));
-  }
+  if (settingsOf(ctx).feed?.previewComments !== false && state.total > 0 && typeof ctx.actions?.comments === "function") armPreview();
   render();
   return { ufi, likeLink, commentLink };
+
+  /** Loads the preview after the story has been on screen for a while, if the page's ration allows it then. */
+  function armPreview() {
+    cancelPreview = whenVisibleFor(
+      ufi,
+      PREVIEW_DELAY_MS,
+      guard(() => {
+        cancelPreview = null;
+        if (state.loading || state.loaded) return;
+        if (previewBudget.take()) loadComments(true);
+        else if (!previewBudget.spent()) armPreview(); // over the ration for now: try again on a later look
+      }),
+    );
+  }
 
   // ---- rendering ----
 
@@ -211,8 +227,10 @@ export function createFeedback(story, ctx) {
     state.loading = false;
     if (!r.ok) {
       renderViewAll();
-      // A preview fails silently, unless "View all" was clicked while it was loading.
+      // A preview fails silently, unless "View all" was clicked while it was loading. Facebook is not answering:
+      // the other stories' previews wait a while instead of failing one by one.
       if (!preview || state.expandOnLoad) showError("comments");
+      if (preview) previewBudget.failed();
       health.count("stream.comments-failed");
       return;
     }

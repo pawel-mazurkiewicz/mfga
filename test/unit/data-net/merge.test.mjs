@@ -223,3 +223,29 @@ test("property: every emitted story was safe when emitted (nothing newer arrives
     }
   }
 });
+
+test("cancel(): an abandoned feed asks its sources for nothing more, even in the middle of a more() call", async () => {
+  let release;
+  const gate = new Promise((r) => (release = r));
+  const a = listSource("a", [[["a1", 100]], [["a2", 90]], [["a3", 80]]]);
+  const slow = {
+    name: "b",
+    done: false,
+    calls: 0,
+    async next() {
+      slow.calls++;
+      await gate;
+      return { stories: [story(`b${slow.calls}`, 95 - slow.calls * 10, "b")], dropped: {} };
+    },
+  };
+  const feed = createMergedFeed({ sources: [a, slow], pageSize: 10 });
+  const pending = feed.more();
+  await new Promise((r) => setTimeout(r, 0));
+  const before = a.calls + slow.calls;
+  feed.cancel();
+  release();
+  assert.deepEqual(await pending, [], "the abandoned call delivers nothing");
+  assert.equal(a.calls + slow.calls, before, "no source was asked again after cancel()");
+  assert.deepEqual(await feed.more(), []);
+  assert.equal(a.calls + slow.calls, before);
+});

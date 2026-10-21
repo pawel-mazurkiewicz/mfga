@@ -87,10 +87,64 @@
     return key;
   }
 
+  // ---- push views -----------------------------------------------------------------------------------------
+  // A photo opened from Home is a "push view": the URL changes, a full-viewport dialog is layered over the
+  // page and the page underneath stays mounted (scroll position included); Back closes the dialog without
+  // re-rendering. Comet loads the viewer first, so the dialog appears a moment after the URL changes.
+  const PUSH_VIEW_PATH = /^\/photo(\/|\.php|$)/;
+  const PUSH_VIEW_DELAY_MS = 350;
+  const HOME_PATHS = new Set(["/", "/home.php"]);
+  const here = () => location.pathname + location.search;
+  let rendered = here(); // the URL the mounted page belongs to
+  let pushView = null;
+  let pushTimer = 0;
+
+  function openPushView() {
+    closePushView();
+    const url = here();
+    pushTimer = setTimeout(() => {
+      if (here() !== url || !root()) return;
+      pushView = document.createElement("div");
+      pushView.setAttribute("role", "dialog");
+      pushView.setAttribute("aria-label", "Photo viewer");
+      pushView.dataset.fakePushView = "";
+      pushView.style.cssText = "position:fixed;inset:0;z-index:5;background:#000;color:#fff";
+      const close = document.createElement("div");
+      close.setAttribute("role", "button");
+      close.setAttribute("aria-label", "Close");
+      close.textContent = "×";
+      close.addEventListener("click", () => history.back());
+      pushView.appendChild(close);
+      root().appendChild(pushView);
+    }, PUSH_VIEW_DELAY_MS);
+  }
+
+  function closePushView() {
+    clearTimeout(pushTimer);
+    pushTimer = 0;
+    if (pushView) pushView.remove();
+    pushView = null;
+  }
+
+  /** Handles a URL change as a push view (open or close) when it is one; false for a normal navigation. */
+  function pushViewNavigation() {
+    if (PUSH_VIEW_PATH.test(location.pathname) && HOME_PATHS.has(new URL(rendered, location.href).pathname)) {
+      openPushView();
+      return true;
+    }
+    if ((pushView || pushTimer) && here() === rendered) {
+      closePushView();
+      return true;
+    }
+    closePushView();
+    return false;
+  }
+
   let renders = 0;
   /** Re-renders the root for the current URL; a navigation that started later wins over a slower earlier one. */
   async function render() {
     const id = ++renders;
+    rendered = here();
     const res = await fetch(location.pathname + location.search, { credentials: "include" });
     const html = await res.text();
     if (id !== renders) return;
@@ -109,7 +163,7 @@
 
   function go(url) {
     history.pushState({ key: newKey() }, "", url);
-    render();
+    if (!pushViewNavigation()) render();
   }
 
   document.addEventListener("click", (e) => {
@@ -126,7 +180,7 @@
   window.addEventListener("popstate", () => {
     const key = history.state && history.state.key;
     if (!key || !knownKeys.has(key)) history.replaceState({ key: newKey() }, "", location.href);
-    render();
+    if (!pushViewNavigation()) render();
   });
 
   // ---- layers ---------------------------------------------------------------------------------------------

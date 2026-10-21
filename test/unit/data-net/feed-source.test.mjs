@@ -283,3 +283,13 @@ test("the SSR page is skipped when the preloader's orderby makes it another conn
   assert.equal(client.calls[0].variables.feedEndCursor, null);
   assert.deepEqual(client.calls[0].variables.orderby, ["MOST_RECENT"]);
 });
+
+test("ssr:false (a feed built long after the page load) asks Facebook for page 1 instead of the old SSR page", async () => {
+  const harvest = homeHarvest();
+  const ops = opsMod.createOpRegistry({ platform: basePlatform(), harvest });
+  const { src, client } = source("friends", { harvest, ops, ssr: false, pages: [page([edge(9, 100)], "C2")] });
+  const first = await src.next();
+  assert.equal(client.calls.length, 1);
+  assert.equal(client.calls[0].variables.feedEndCursor, null);
+  assert.deepEqual(first.stories.map((s) => s.postId), ["9"]);
+});

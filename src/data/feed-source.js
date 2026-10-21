@@ -35,8 +35,10 @@ export function feedVariables(template, { feedStyle, orderby, cursor, scale }) {
 }
 
 /**
- * createFeedSource({ name, client, ops, harvest, classifier, scale })
+ * createFeedSource({ name, client, ops, harvest, classifier, scale, ssr })
  *   -> { name, done, next(): Promise<{stories, dropped}>, reset() }
+ * ssr (default true): page 1 may come from the document's SSR payload. That payload is as old as the page
+ * load, so a feed built long after it (a later SPA visit to Home) passes false and asks Facebook instead.
  * Hooks: extract (WP-A extractStory), codec (JSONL/typename decoders for SSR payloads).
  */
 export function createFeedSource({
@@ -46,6 +48,7 @@ export function createFeedSource({
   harvest,
   classifier = createClassifier(),
   scale,
+  ssr: useSsr = true,
   extract = extractStory,
   codec = DEFAULT_CODEC,
 }) {
@@ -80,7 +83,7 @@ export function createFeedSource({
     if (source.done) return { stories: [], dropped: {} };
     const gen = generation;
     await harvest.ready;
-    const ssr = ssrPending ? ssrConnection() : null;
+    const ssr = ssrPending && useSsr ? ssrConnection() : null;
     ssrPending = false;
     const connection = ssr ?? (await fetchConnection());
     const page = await readEdges(connection.edges);

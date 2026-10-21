@@ -35,6 +35,7 @@ export function createShell(ctx) {
   let route = ctx.route || null;
   let settings = ctx.settings;
   let expanded = false;
+  let feedsOpen = false; // News Feed's filters opened on Home (filter routes open them by themselves)
   const look = () => ((typeof settings?.get === "function" ? settings.get() : settings) || DEFAULTS).look;
 
   let header = createHeader({ navigator, openSettings: ctx.openSettings });
@@ -75,7 +76,7 @@ export function createShell(ctx) {
       expanded = true;
       render();
     };
-    patch(left, [leftModel, expanded, chat], () => renderLeftCol(leftModel, { expanded, onMore, showChat: chat }));
+    patch(left, [leftModel, expanded, feedsOpen, chat], () => renderLeftCol(leftModel, { expanded, onMore, showChat: chat, feedsOpen }));
 
     right.hidden = !rightColumn;
     if (rightColumn) {
@@ -95,6 +96,14 @@ export function createShell(ctx) {
     const a = e.target.closest?.("a[href]");
     if (!a || (a.target && a.target !== "_self")) return;
     e.preventDefault();
+    // On Home, the selected News Feed opens and closes its filters instead of loading the page it is on.
+    if (a.matches(".mfga-shell-left a[aria-expanded]")) {
+      const focused = document.activeElement === a;
+      feedsOpen = !feedsOpen;
+      render();
+      if (focused) left.querySelector('.mfga-nav-item[data-key="newsFeed"] a')?.focus();
+      return;
+    }
     navigator.go(a.href);
   };
   el.addEventListener("click", onClick);
@@ -108,7 +117,10 @@ export function createShell(ctx) {
   return {
     el,
     update(state = {}) {
-      if (state.route) route = state.route;
+      if (state.route) {
+        if (state.route.mode !== route?.mode || state.route.filter !== route?.filter) feedsOpen = false;
+        route = state.route;
+      }
       if (state.settings) settings = state.settings;
       render();
     },

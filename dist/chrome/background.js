@@ -66,6 +66,8 @@
   var MAX_VARIABLES_CHARS = 64 * 1024;
   var MAX_AGE_MS = 30 * 864e5;
   var learned = null;
+  var OWN_TTL_MS = 6e4;
+  var own = /* @__PURE__ */ new Map();
   var loading = null;
   var saveTimer = 0;
   function load() {
@@ -115,12 +117,33 @@
     }
     return void 0;
   }
+  var ownKey = (tabId, name, docId) => `${tabId}|${name}|${docId}`;
+  function announceOwn(tabId, name, docId) {
+    const now = Date.now();
+    for (const [key2, times] of own) {
+      const live = times.filter((t) => now - t < OWN_TTL_MS);
+      if (live.length) own.set(key2, live);
+      else own.delete(key2);
+    }
+    const key = ownKey(tabId, name, docId);
+    own.set(key, [...own.get(key) || [], now]);
+  }
+  function takeOwn(tabId, name, docId) {
+    const key = ownKey(tabId, name, docId);
+    const times = (own.get(key) || []).filter((t) => Date.now() - t < OWN_TTL_MS);
+    if (!times.length) return false;
+    times.shift();
+    if (times.length) own.set(key, times);
+    else own.delete(key);
+    return true;
+  }
   function onRequest(details) {
     if (details.method !== "POST" || !details.requestBody || details.incognito) return;
     const name = formField(details.requestBody, "fb_api_req_friendly_name");
     if (!name || !ALLOWED_OPS.has(name)) return;
     const docId = formField(details.requestBody, "doc_id");
     if (!docId || !/^\d{5,25}$/.test(docId)) return;
+    if (takeOwn(details.tabId, name, docId)) return;
     const raw = formField(details.requestBody, "variables");
     let variables = null;
     if (raw && raw.length <= MAX_VARIABLES_CHARS) {
@@ -141,10 +164,16 @@
     { urls: ["https://www.facebook.com/api/graphql/*", "https://web.facebook.com/api/graphql/*"] },
     ["requestBody"]
   );
-  api.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  api.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg && msg.type === "mfga:getLearnedOps") {
       load().then((ops) => sendResponse(ops));
       return true;
+    }
+    if (msg && msg.type === "mfga:ownRequest") {
+      const tabId = sender && sender.tab && sender.tab.id;
+      if (tabId != null && typeof msg.name === "string" && typeof msg.docId === "string") announceOwn(tabId, msg.name, msg.docId);
+      sendResponse(true);
+      return false;
     }
     return false;
   });

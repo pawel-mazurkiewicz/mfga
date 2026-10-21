@@ -50,6 +50,19 @@ test("skinPosts off leaves only the hide rules", () => {
   assert.ok(!css.includes("data-mfga-skin"));
 });
 
+test("one body column: attachments, Like · Comment · Share and the UFI box start where the message text does", () => {
+  // Live 2026 posts inset the header and message text 12px but run the action bar and comments edge to edge,
+  // so everything after the message is pushed by the same 12px (it used to start 12px left of the text).
+  const css = nativeCss(settings()).replace(/\/\*[\s\S]*?\*\//g, "");
+  assert.match(css, /--mfga-indent: 58px; --mfga-pad: 12px;/);
+  const body = "calc(var(--mfga-indent) + var(--mfga-pad))";
+  const rule = (sel) => new RegExp(`${sel.replace(/[[\]().*+?^$|\\]/g, "\\$&")}[^{]*\\{([^}]*)\\}`).exec(css)?.[1] ?? "";
+  assert.ok(rule('[data-mfga-part="attachment"] ').includes(`margin-inline: ${body} var(--mfga-pad) !important`));
+  assert.ok(rule('[data-mfga-part="actions"] ').includes(`margin: 0 0 0 ${body} !important`));
+  assert.ok(rule('[data-mfga-part="summary"], ').includes(`margin: 2px var(--mfga-pad) 0 ${body} !important`), "summary, comments, composer: under the text, as wide as the photo");
+  assert.ok(rule('[data-mfga-part="message"] ').includes("margin-inline-start: var(--mfga-indent) !important"), "the text's own 12px inset follows");
+});
+
 test("2010 values: blue bold names, 13px text, 11px action links, #EDEFF4 UFI", () => {
   const css = nativeCss(settings());
   assert.match(css, /\[data-mfga-part="name"\] a, [^{]*\{ color: #3B5998 !important; font-weight: bold !important; \}/);

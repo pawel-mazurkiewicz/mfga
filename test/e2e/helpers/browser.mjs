@@ -7,7 +7,8 @@
 //   await b.close();
 //
 // Pages are served on https://www.facebook.com/ through request interception, so code that checks the
-// origin behaves as on Facebook. Nothing touches the network: unrouted requests are aborted.
+// origin behaves as on Facebook. Nothing touches the network: unrouted requests are aborted, and the browser has
+// no route out (OFFLINE_ARGS).
 
 import { chromium } from "playwright-core";
 import { build } from "esbuild";
@@ -37,6 +38,11 @@ export async function bundle(entry, { define = {}, globalName } = {}) {
  * checked before the default page route. options.extensionPath: load an unpacked extension (headed
  * "new headless" mode is used automatically).
  */
+// Routes see only the first request of a redirect chain: a fulfilled 302 (a checkpoint redirect in the mock) is
+// followed by the browser itself. With a dead proxy and no loopback bypass, such a follow-up fails instead of
+// reaching the real facebook.com with the fake session cookies.
+const OFFLINE_ARGS = ["--proxy-server=http://127.0.0.1:9", "--proxy-bypass-list=<-loopback>"];
+
 export async function launchBrowser({ extensionPath = null, viewport = { width: 1280, height: 900 } } = {}) {
   let browser = null;
   let context;
@@ -46,10 +52,10 @@ export async function launchBrowser({ extensionPath = null, viewport = { width: 
       executablePath: CHROMIUM,
       headless: true,
       viewport,
-      args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`, "--headless=new"],
+      args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`, "--headless=new", ...OFFLINE_ARGS],
     });
   } else {
-    browser = await chromium.launch({ executablePath: CHROMIUM, headless: true });
+    browser = await chromium.launch({ executablePath: CHROMIUM, headless: true, args: OFFLINE_ARGS });
     context = await browser.newContext({ viewport, locale: "en-US" });
   }
 

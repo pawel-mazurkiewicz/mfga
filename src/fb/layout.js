@@ -12,6 +12,14 @@ const VARS_ID = "mfga-layout-vars";
 const ENSURE_MS = 1000;
 const PUSH_VIEW_MIN_WIDTH = 450; // the post dialog is ~680px, the photo viewer full width; hovercards ~360px
 const VARS_EPSILON_PX = 0.1; // re-measurement noise (see changedVars); far below anything visible
+const DIALOG = '[role="dialog"]';
+const PAGE_DIALOG = '[role="dialog"]:not([role="banner"] *)';
+// With the fixed bar on, html[data-mfga-dialog] tells the stylesheet that a Facebook dialog is open. It used to
+// be `html:has([role=dialog]:not([role=banner] *))` in CSS, but a :has() on <html> made every DOM change on
+// the page restyle the whole document: on a long feed (100k elements) 3.8 s of style recalculation per 5 s of
+// ordinary feed activity, ~200 ms per frame. An observer that looks only at inserted/removed subtrees costs
+// nothing measurable.
+const DIALOG_ATTR = "data-mfga-dialog";
 
 const hasColumns = (mode) => mode === "home" || mode === "groups-feed";
 
@@ -126,6 +134,25 @@ export function changedVars(next, applied, eps = VARS_EPSILON_PX) {
   };
 }
 
+/** A Facebook dialog is open (not a banner dropdown): the fixed 2010 bar then steps below it. */
+export function hasPageDialog(doc = document) {
+  return doc.querySelector(PAGE_DIALOG) != null;
+}
+
+/** Whether a batch of mutation records may have opened or closed such a dialog. */
+export function touchesDialog(records) {
+  const holds = (n) => n.nodeType === 1 && (n.matches(DIALOG) || n.querySelector(DIALOG) != null);
+  for (const r of records) {
+    if (r.type === "attributes") {
+      if (r.oldValue === "dialog" || r.target.getAttribute?.("role") === "dialog") return true;
+      continue;
+    }
+    for (const n of r.addedNodes) if (holds(n)) return true;
+    for (const n of r.removedNodes) if (holds(n)) return true;
+  }
+  return false;
+}
+
 export function createLayout({ settings } = {}) {
   const doc = document;
   const html = doc.documentElement;
@@ -138,6 +165,21 @@ export function createLayout({ settings } = {}) {
   let ro = null;
   let observed = new Set();
   let timer = 0;
+  let dialogs = null; // MutationObserver keeping html[data-mfga-dialog] while the bar is fixed
+
+  const syncDialog = () => html.toggleAttribute(DIALOG_ATTR, hasPageDialog(doc));
+  const watchDialogs = (on) => {
+    if (!on) {
+      dialogs?.disconnect();
+      dialogs = null;
+      html.removeAttribute(DIALOG_ATTR);
+      return;
+    }
+    if (dialogs) return;
+    dialogs = new MutationObserver(safe("layout", (records) => touchesDialog(records) && syncDialog(), { disableOnError: false }));
+    dialogs.observe(doc.body || html, { childList: true, subtree: true, attributes: true, attributeFilter: ["role"], attributeOldValue: true });
+    syncDialog();
+  };
 
   // dx/dy live in a :root stylesheet because Facebook's [role=main] uses them; they change on resizes and
   // route changes only. The footer position moves whenever the page grows (feed pages, images, comments), so
@@ -234,6 +276,7 @@ export function createLayout({ settings } = {}) {
 
   const teardown = () => {
     stop();
+    watchDialogs(false);
     mode = null;
     setMarks(new Map());
     main = null;
@@ -251,6 +294,7 @@ export function createLayout({ settings } = {}) {
     html.setAttribute("data-mfga-shell", "");
     html.setAttribute("data-mfga-route", mode);
     html.toggleAttribute("data-mfga-fixed-header", !!s.look.fixedHeader);
+    watchDialogs(!!s.look.fixedHeader);
     const host = shellHost(doc);
     host.hidden = false;
     start();

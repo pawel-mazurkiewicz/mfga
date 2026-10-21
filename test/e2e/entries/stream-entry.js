@@ -22,6 +22,7 @@ const ctl = {
   failComment: false,
   failComments: false,
   failPage: false,
+  emptyPages: false, // more() returns nothing yet the feed goes on (every story filtered out)
   bareEcho: false,
   nowShiftMs: 0,
 };
@@ -95,6 +96,7 @@ function makeFeed(list) {
       record("more");
       await wait();
       if (ctl.failPage) throw new Error("network");
+      if (ctl.emptyPages) return [];
       const page = list.slice(next, next + ctl.pageSize);
       next += page.length;
       feed.exhausted = next >= list.length;

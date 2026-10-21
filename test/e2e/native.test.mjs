@@ -525,6 +525,12 @@ test("a skinned post looks 2010 (screenshots in test-results/native)", async () 
       rule: `${getComputedStyle(unit).borderBottomWidth} ${getComputedStyle(unit).borderBottomColor}`,
       messageLeft: unit.querySelector('[data-mfga-part="message"]').getBoundingClientRect().left,
       nameLeft: unit.querySelector('[data-mfga-part="name"]').getBoundingClientRect().left,
+      textLeft: unit.querySelector('[data-mfga-part="message"] [dir="auto"]').getBoundingClientRect().left,
+      likeLeft: unit.querySelector('[data-mfga-action="like"]').getBoundingClientRect().left,
+      attachmentLeft: unit.querySelector('[data-mfga-part="attachment"]').getBoundingClientRect().left,
+      ufiLeft: unit.querySelector('[data-mfga-part="comments"]').getBoundingClientRect().left,
+      ufiRight: unit.querySelector('[data-mfga-part="comments"]').getBoundingClientRect().right,
+      attachmentRight: unit.querySelector('[data-mfga-part="attachment"]').getBoundingClientRect().right,
     };
   });
   assert.equal(s.avatarW, 50);
@@ -550,6 +556,10 @@ test("a skinned post looks 2010 (screenshots in test-results/native)", async () 
   assert.equal(s.cardShadow, "none");
   assert.equal(s.rule, "1px rgb(233, 233, 233)");
   assert.ok(Math.abs(s.messageLeft - s.nameLeft) <= 4, `message (${s.messageLeft}) lines up with the name (${s.nameLeft})`);
+  // One 2010 body column: the photo, "Like · Comment · Share" and the light-blue box start where the text does.
+  assert.deepEqual([s.likeLeft, s.ufiLeft], [s.attachmentLeft, s.attachmentLeft], "attachment, links and UFI share one edge");
+  assert.ok(Math.abs(s.likeLeft - s.textLeft) <= 1, `Like (${s.likeLeft}) under the message text (${s.textLeft})`);
+  assert.equal(s.ufiRight, s.attachmentRight, "the light-blue box is as wide as the photo");
   noErrors(page);
   await page.close();
 });
@@ -647,6 +657,7 @@ test("real 2026 posts: kept, message and attachments tagged even when they share
         messageNotInAttachment: !attachments.some((a) => a.contains(message)),
         indent: message ? getComputedStyle(message).marginInlineStart : null,
         attachmentIndent: attachments[0] ? getComputedStyle(attachments[0]).marginInlineStart : null,
+        footerIndents: ["actions", "composer"].map((part) => (tag(part)[0] ? getComputedStyle(tag(part)[0]).marginLeft : null)),
       };
     }),
   );
@@ -658,8 +669,50 @@ test("real 2026 posts: kept, message and attachments tagged even when they share
     assert.equal(u.mediaTagged, true, `${REAL[i]}: every photo, video and link card sits in an attachment part`);
     assert.equal(u.messageNotInAttachment, true);
     assert.equal(u.indent, "58px");
-    assert.equal(u.attachmentIndent, "74px");
+    // The live posts inset the header and the message text 12px and run the action bar edge to edge: the
+    // attachments, "Like · Comment · Share" and the comment box start at the text, 58 + 12px in.
+    assert.equal(u.attachmentIndent, "70px");
+    assert.equal(u.footerIndents[0], "70px", `${REAL[i]}: action links on the body column`);
+    assert.ok([null, "70px"].includes(u.footerIndents[1]), `${REAL[i]}: comment box on the body column (${u.footerIndents[1]})`);
   }
+  noErrors(page);
+  await page.close();
+});
+
+test("the skin leaves a post alone while its comment thread or a text box changes, and re-tags it on other changes", async () => {
+  // A full pass over a post re-runs its whole analysis (about 1 ms a frame with an open 30-comment thread), and
+  // nothing inside a tagged comments box or a text box can move another part.
+  const page = await open("feed.html");
+  const unit = '[data-fixture="organic-photo"]';
+  const state = () =>
+    page.evaluate((unit) => {
+      const u = document.querySelector(unit);
+      return { name: u.querySelector('[data-mfga-part="name"]') != null, parts: [...u.querySelectorAll("[data-mfga-part]")].map((e) => e.getAttribute("data-mfga-part")) };
+    }, unit);
+  const full = (await state()).parts;
+  assert.deepEqual(full, ["avatar", "name", "byline", "message", "attachment", "footer", "summary", "actions", "comments", "composer"]);
+  // A tag removed by hand comes back only with a full pass over the post.
+  const dropName = () => page.evaluate((unit) => document.querySelector(`${unit} [data-mfga-part="name"]`).removeAttribute("data-mfga-part"), unit);
+  await dropName();
+  await page.evaluate((unit) => {
+    const u = document.querySelector(unit);
+    const box = u.querySelector('[data-mfga-part="comments"]');
+    box.append(box.firstElementChild.cloneNode(true)); // another comment lands in the open thread
+    u.querySelector('[role="article"] .fx-bubble').append(document.createElement("span")); // a dock mounts in a comment
+    const typed = document.createElement("p");
+    typed.textContent = "Typing";
+    u.querySelector('[role="textbox"]').replaceChildren(typed);
+  }, unit);
+  await settle(page);
+  assert.equal((await state()).name, false, "no full pass for changes inside the thread or the comment box");
+  await page.evaluate((unit) => document.querySelector(`${unit} [data-mfga-part="actions"]`).append(document.createElement("span")), unit);
+  await settle(page);
+  assert.deepEqual((await state()).parts, full, "a change elsewhere in the post re-tags it");
+  // A thread left without comments loses its part.
+  await dropName();
+  await page.evaluate((unit) => document.querySelector(`${unit} [data-mfga-part="comments"]`).replaceChildren(), unit);
+  await settle(page);
+  assert.deepEqual((await state()).parts, full.filter((p) => p !== "comments"));
   noErrors(page);
   await page.close();
 });

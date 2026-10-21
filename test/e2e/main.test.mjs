@@ -1,0 +1,348 @@
+// End-to-end tests of src/main.js (how the modules are wired together) on the BUILT products and the fake
+// facebook.com: settings changed at runtime, a deploy that retires the stored doc_id, abandoned feeds, the
+// checkpoint notice, the composer fallback and the extension's request learner. Rebuild with `npm run build`.
+
+import { test, describe } from "node:test";
+import assert from "node:assert/strict";
+import { DIST, hasExtension, hasUserscript, launchProduct } from "./helpers/product.mjs";
+import { fixtureNow } from "./helpers/site.mjs";
+
+const TIMEOUT = 150000;
+const FEED = "CometModernHomeFeedQuery";
+const SETTINGS_KEY = "__gm_store__:mfga:settings";
+
+const storyCount = (page) => page.evaluate(() => document.querySelectorAll("#mfga-stream .mfga-story[data-key]").length);
+const waitStories = (page, n = 3, timeout = 90000) =>
+  page.waitForFunction((min) => document.querySelectorAll("#mfga-stream .mfga-story[data-key]").length >= min, n, { timeout, polling: 250 });
+const feedAttr = (page) => page.evaluate(() => document.documentElement.getAttribute("data-mfga-feed"));
+const openSettings = (page) => page.evaluate(() => globalThis.__gmMenu.find((m) => /settings/i.test(m.label)).fn());
+
+/** Facebook's own posts ([aria-posinset] outside our stream) that are actually on screen. */
+const nativePostsShown = (page) =>
+  page.evaluate(
+    () =>
+      [...document.querySelectorAll("[aria-posinset]")].filter((el) => {
+        if (el.closest("#mfga-stream") || !el.getClientRects().length) return false;
+        for (let n = el; n && n.nodeType === 1; n = n.parentElement) if (getComputedStyle(n).visibility === "hidden") return false;
+        return true;
+      }).length,
+  );
+
+/** Changes the stored settings the way another tab would (the GM shim reports it as a remote change). */
+async function storeFromOtherTab(p, patch) {
+  const other = await p.open("/robots-free-page");
+  await other.evaluate(
+    ([key, patchJson]) => {
+      const merge = (a, b) => {
+        for (const [k, v] of Object.entries(b)) a[k] = v && typeof v === "object" && !Array.isArray(v) ? merge(a[k] || {}, v) : v;
+        return a;
+      };
+      localStorage.setItem(key, JSON.stringify(merge(JSON.parse(localStorage.getItem(key) || "{}"), JSON.parse(patchJson))));
+    },
+    [SETTINGS_KEY, JSON.stringify(patch)],
+  );
+  await other.close();
+}
+
+/** Clicks a visible 2010 link to the plain home page ("/"): an SPA navigation through the shell's navigator. */
+const clickHomeLink = (page) =>
+  page.evaluate(() => {
+    const a = [...document.querySelectorAll("#mfga-shell a[href]")].find((el) => {
+      const u = new URL(el.href);
+      return u.pathname === "/" && !u.search && el.getClientRects().length;
+    });
+    a.click();
+    return !!a;
+  });
+
+/**
+ * A profile page whose in-app navigation to "/" behaves like Facebook's router: the HTML it fetches carries no
+ * new data-sjs preloaders (only a full page load does).
+ */
+async function openProfileWithRealisticRouter(p) {
+  const page = await p.open(`/${p.site.world.friends[0].vanity}`);
+  await page.route(
+    (u) => u.pathname === "/",
+    async (route, request) => {
+      if (request.resourceType() !== "fetch") return route.fallback();
+      const html = p.site.render("home", { feed: "top" }).html.replace(/<script type="application\/json"[^>]*data-sjs[^>]*>[\s\S]*?<\/script>/g, "");
+      return route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: html });
+    },
+  );
+  await page.waitForSelector("#mfga-shell a", { state: "attached", timeout: 30000 });
+  await page.waitForTimeout(1000);
+  return page;
+}
+
+async function withProduct(target, fn, siteOpts = {}) {
+  const p = await launchProduct(target, { now: fixtureNow(), ...siteOpts });
+  const errors = [];
+  p.b.context.on("page", (page) => page.on("pageerror", (e) => errors.push(e)));
+  try {
+    await fn(p, errors);
+  } finally {
+    await p.close();
+  }
+}
+
+describe("MFGA userscript: wiring (src/main.js)", { skip: !hasUserscript() && `no build at ${DIST.userscript} (npm run build)` }, () => {
+  test("a deploy retired the stored doc_id: an SPA visit to Home sends the probed id with the old variables", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p) => {
+      const home = await p.open("/");
+      await waitStories(home, 5);
+      await home.waitForTimeout(500); // the descriptor is persisted asynchronously
+      const stale = p.site.mock.docIds[FEED];
+      p.site.mock.rotateDocId(FEED, "31234567890123456");
+      await home.close();
+
+      const page = await openProfileWithRealisticRouter(p);
+      const from = p.site.mock.feedRequests().length;
+      await clickHomeLink(page);
+      await page.waitForFunction(() => location.pathname === "/", null, { timeout: 10000 });
+      await waitStories(page, 5, 60000);
+      assert.equal(await feedAttr(page), "ours");
+      assert.equal(await page.locator("#mfga-stream .mfga-feed-error").count(), 0, "no error box");
+      const sent = p.site.mock.feedRequests().slice(from);
+      assert.deepEqual(
+        sent.slice(0, 2).map((e) => [e.docId, e.errorCode ?? "ok"]),
+        [
+          [stale, 1570245],
+          ["31234567890123456", "ok"],
+        ],
+        "the retired id once, then the new id (from the page's module registry) with the old variables template",
+      );
+      assert.ok(sent.slice(1).every((e) => e.docId === "31234567890123456" && !e.errorCode), "every later request uses the new id");
+    });
+  });
+
+  test("no usable doc_id at all: Home falls back to Facebook's own feed and News Feed reloads the page", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p) => {
+      const home = await p.open("/");
+      await waitStories(home, 5);
+      await home.waitForTimeout(500);
+      // No page helper (so no probe), and every id we try is rejected as retired.
+      await home.evaluate((key) => {
+        const s = JSON.parse(localStorage.getItem(key) || "{}");
+        localStorage.setItem(key, JSON.stringify({ ...s, advanced: { ...(s.advanced || {}), mainWorldHelper: false } }));
+      }, SETTINGS_KEY);
+      await home.close();
+      p.site.mock.inject.staleDoc = 1000;
+
+      const page = await openProfileWithRealisticRouter(p);
+      await clickHomeLink(page);
+      await page.waitForFunction(() => location.pathname === "/", null, { timeout: 10000 });
+      await page.waitForFunction(() => document.documentElement.getAttribute("data-mfga-feed") === "native", null, { timeout: 60000 });
+      await page.waitForTimeout(500);
+      assert.ok((await nativePostsShown(page)) > 0, "Facebook's own (cleaned) feed is shown instead of an error box");
+      const requests = p.site.mock.feedRequests().length;
+      await page.waitForTimeout(3000);
+      assert.equal(p.site.mock.feedRequests().length, requests, "nothing more is sent for a feed that cannot work");
+
+      // §3.1: "News Feed" now does a full page load, which carries a fresh preloader.
+      p.site.mock.inject.staleDoc = 0;
+      await page.evaluate(() => (window.__beforeReload = true));
+      await clickHomeLink(page);
+      await page.waitForFunction(() => !window.__beforeReload, null, { timeout: 20000 });
+      await waitStories(page, 3);
+      assert.equal(await feedAttr(page), "ours");
+    });
+  });
+
+  test("Top News chosen in the settings dialog switches the visible feed", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p) => {
+      const page = await p.open("/");
+      await waitStories(page, 5);
+      const from = p.site.mock.feedRequests().length;
+      await openSettings(page);
+      await page.getByRole("radio", { name: /Top News/ }).check();
+      await page.waitForFunction(() => document.querySelector("#mfga-stream .mfga-feed-mode-on")?.textContent === "Top News", null, { timeout: 15000 });
+      await waitStories(page, 3);
+      await page.waitForTimeout(2000);
+      const styles = p.site.mock.feedRequests().slice(from).map((e) => e.variables?.feedStyle);
+      assert.ok(styles.length > 0 && styles.every((s) => s === "DEFAULT"), `only Top News is fetched: ${styles}`);
+    });
+  });
+
+  test("the view's own Top News switch reloads once: the settings echo does not rebuild it", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p) => {
+      const page = await p.open("/");
+      await waitStories(page, 5);
+      await page.waitForTimeout(3000);
+      const from = p.site.mock.feedRequests().length;
+      await page.evaluate(() => (window.__view = document.getElementById("mfga-stream")));
+      await page.locator("#mfga-stream").getByRole("button", { name: "Top News" }).click();
+      await waitStories(page, 3);
+      await page.waitForTimeout(6000);
+      assert.ok(await page.evaluate(() => document.getElementById("mfga-stream") === window.__view), "the view that switched is kept, not rebuilt");
+      const sent = p.site.mock.feedRequests().slice(from).map((e) => `${e.variables?.feedStyle}:${e.variables?.feedEndCursor ?? "-"}`);
+      assert.equal(new Set(sent).size, sent.length, `no page is asked for twice: ${sent.join(" ")}`);
+    });
+  });
+
+  test("Top News clicked on a ?filter= route loads the Top News feed once, not again after the way back to \"/\"", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p) => {
+      const page = await p.open("/?filter=friends&sk=h_chr");
+      await waitStories(page, 3);
+      await page.waitForTimeout(2000);
+      const from = p.site.mock.feedRequests().length;
+      await page.evaluate(() => (window.__view = document.getElementById("mfga-stream")));
+      await page.locator("#mfga-stream").getByRole("button", { name: "Top News" }).click();
+      await page.waitForFunction(() => location.search === "", null, { timeout: 15000 });
+      await waitStories(page, 3);
+      await page.waitForTimeout(6000);
+      assert.ok(await page.evaluate(() => document.getElementById("mfga-stream") === window.__view), "the view that switched is kept, not rebuilt");
+      const sent = p.site.mock.feedRequests().slice(from).map((e) => `${e.variables?.feedStyle}:${e.variables?.feedEndCursor ?? "-"}`);
+      assert.ok(sent.length > 0 && sent.every((s) => s.startsWith("DEFAULT:")), `Top News only: ${sent.join(" ")}`);
+      assert.equal(new Set(sent).size, sent.length, `no page is asked for twice: ${sent.join(" ")}`);
+    });
+  });
+
+  test("feed settings changed away from Home apply when Home is shown again", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p) => {
+      const page = await p.open("/");
+      await waitStories(page, 5);
+      const first = await page.$eval("#mfga-stream .mfga-story[data-key]", (el) => ({ key: el.dataset.key, text: el.textContent }));
+      const word = (first.text.match(/[A-Za-z]{6,}/g) || [])[2];
+      assert.ok(word, "a word of the first story to mute");
+      await page.evaluate((vanity) => {
+        const a = [...document.querySelectorAll("#mfga-shell a[href]")].find((el) => el.getClientRects().length && new URL(el.href).pathname === `/${vanity}`);
+        (a || [...document.querySelectorAll("#mfga-shell a[href*='/groups/']")].find((el) => el.getClientRects().length)).click();
+      }, p.site.world.viewer.vanity);
+      await page.waitForFunction(() => document.documentElement.getAttribute("data-mfga-route") !== "home", null, { timeout: 15000 });
+      await storeFromOtherTab(p, { feed: { keywords: [word] } });
+      await page.waitForTimeout(1000);
+      await clickHomeLink(page);
+      await page.waitForFunction(() => document.documentElement.getAttribute("data-mfga-feed") === "ours", null, { timeout: 15000 });
+      await waitStories(page, 3);
+      await page.waitForTimeout(1500);
+      assert.equal(await page.locator(`#mfga-stream .mfga-story[data-key="${first.key}"]`).count(), 0, `the story with "${word}" is hidden`);
+    });
+  });
+
+  test("rapid source toggles build one feed: abandoned feeds stop fetching", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p) => {
+      const page = await p.open("/");
+      await waitStories(page, 5);
+      await page.waitForTimeout(3000);
+      const from = p.site.mock.feedRequests().length;
+      await openSettings(page);
+      const box = page.getByRole("checkbox", { name: /^Pages/ });
+      await box.uncheck();
+      await page.waitForTimeout(150);
+      await box.check();
+      await page.waitForTimeout(150);
+      await box.uncheck();
+      await page.waitForTimeout(15000);
+      const sent = p.site.mock.feedRequests().slice(from).map((e) => `${e.variables?.feedStyle}:${e.variables?.feedEndCursor ?? "-"}`);
+      assert.ok(sent.length <= 6, `one first page of the final feed (${sent.length} requests: ${sent.join(" ")})`);
+      assert.equal(new Set(sent).size, sent.length, `no page is asked for twice: ${sent.join(" ")}`);
+      assert.ok(!sent.some((s) => s.startsWith("MOST_RECENT_PAGES_FEED")), "the final feed has no Pages source");
+      const gaps = p.site.mock.gaps(p.site.mock.log.filter((e) => e.method === "POST").slice(-sent.length));
+      assert.ok(gaps.every((g) => g >= 1500), `requests at least 1.5 s apart (ARCHITECTURE rule 8): ${gaps.join(", ")}`);
+    });
+  });
+
+  test("2010 layout turned on at runtime brings the shell, not just a hidden banner", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p) => {
+      const first = await p.open("/");
+      await first.evaluate((key) => localStorage.setItem(key, JSON.stringify({ look: { shell: false } })), SETTINGS_KEY);
+      await first.close();
+      const page = await p.open("/");
+      await page.waitForFunction(() => document.documentElement.getAttribute("data-mfga-feed") === "native", null, { timeout: 30000 });
+      await openSettings(page);
+      await page.getByRole("tab", { name: /Look/ }).click();
+      await page.getByRole("checkbox", { name: /2010 layout/ }).check();
+      await page.waitForFunction(() => document.querySelector("#mfga-shell .mfga-shell-root"), null, { timeout: 15000 });
+      assert.ok(await page.$eval("#mfga-shell", (host) => !host.hidden && host.children.length > 0), "the shell is drawn");
+      await waitStories(page, 3);
+    });
+  });
+
+  test("MFGA turned off in another tab takes the stream out; turned on again brings it back", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p) => {
+      const page = await p.open("/");
+      await waitStories(page, 5);
+      await storeFromOtherTab(p, { enabled: false });
+      await page.waitForFunction(() => !document.documentElement.hasAttribute("data-mfga"), null, { timeout: 10000 });
+      await page.waitForTimeout(300);
+      assert.equal(await page.evaluate(() => !!document.getElementById("mfga-stream")?.getClientRects().length), false, "no unstyled stream over Facebook's feed");
+      assert.ok((await nativePostsShown(page)) > 0, "Facebook's own feed is back");
+      await storeFromOtherTab(p, { enabled: true });
+      await page.waitForFunction(() => document.documentElement.getAttribute("data-mfga-feed") === "ours", null, { timeout: 15000 });
+      await page.waitForFunction(() => document.getElementById("mfga-stream")?.getClientRects().length > 0, null, { timeout: 15000 });
+      assert.ok((await storyCount(page)) >= 5);
+    });
+  });
+
+  test("the settings dialog opened while MFGA is off is styled and on screen", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p) => {
+      const first = await p.open("/");
+      await first.evaluate((key) => localStorage.setItem(key, JSON.stringify({ enabled: false })), SETTINGS_KEY);
+      await first.close();
+      const page = await p.open("/");
+      await page.waitForFunction(() => globalThis.__gmMenu?.length >= 2, null, { timeout: 15000 });
+      await openSettings(page);
+      const dialog = page.getByRole("dialog", { name: /MFGA/ });
+      await dialog.waitFor({ timeout: 10000 });
+      const box = await dialog.boundingBox();
+      const viewport = page.viewportSize();
+      assert.ok(box && box.y >= 0 && box.y + 40 < viewport.height && box.width < viewport.width, `the dialog is in view: ${JSON.stringify(box)}`);
+      assert.equal(await feedAttr(page), null, "MFGA stays off");
+    });
+  });
+
+  test("a checkpoint halt on Home says why Facebook's own feed is back", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p) => {
+      const page = await p.open("/");
+      await waitStories(page, 10);
+      const older = page.locator("#mfga-stream").getByRole("button", { name: "Older Posts" });
+      await older.waitFor();
+      p.site.mock.inject.checkpoint = "html";
+      await older.click();
+      await page.waitForFunction(() => document.documentElement.getAttribute("data-mfga-feed") === "native", null, { timeout: 30000 });
+      const notice = page.locator("#mfga-halted");
+      await notice.waitFor({ state: "visible", timeout: 5000 });
+      assert.match(await notice.textContent(), /paused its own requests/);
+    });
+  });
+
+  test("\"What's on your mind?\" finds Facebook's composer without knowing its label (another language)", { timeout: TIMEOUT }, async () => {
+    await withProduct("userscript", async (p, errors) => {
+      const page = await p.open("/");
+      await waitStories(page, 3);
+      // The fake runtime opens its composer for the region its <template> names: rename both.
+      await page.evaluate(() => {
+        document.querySelector('[role="region"][aria-label="Create a post"]').setAttribute("aria-label", "Beitrag erstellen");
+        document.querySelector("body > template[data-portal]").dataset.region = "Beitrag erstellen";
+      });
+      const docs = p.site.documents.length;
+      await page.locator("#mfga-stream").getByRole("button", { name: "What's on your mind?" }).click();
+      await page.waitForSelector('[role="dialog"][aria-label="Create post"]', { timeout: 10000 });
+      assert.equal(p.site.documents.length, docs, "no navigation");
+      assert.deepEqual(errors, []);
+    });
+  });
+});
+
+describe("MFGA extension: request learner", { skip: !hasExtension() && `no build at ${DIST.extension} (npm run build)` }, () => {
+  test("the background learns Facebook's own requests, not MFGA's replays", { timeout: TIMEOUT }, async () => {
+    await withProduct("extension", async (p) => {
+      const page = await p.open("/");
+      await waitStories(page, 5);
+      assert.ok(p.site.mock.feedRequests().length > 0, "MFGA sent its own feed requests");
+      // A request the page itself makes (Facebook's code, not MFGA's): MAIN world, not announced.
+      await page.evaluate(async () => {
+        const body = new URLSearchParams({ fb_api_req_friendly_name: "CometUFIFeedbackReactMutation", doc_id: "12345678901234567", variables: JSON.stringify({ input: { feedback_reaction_id: "0" } }) });
+        await fetch("/api/graphql/", { method: "POST", body, credentials: "include" }).catch(() => null);
+      });
+      const sw = p.b.context.serviceWorkers()[0] || (await p.b.context.waitForEvent("serviceworker"));
+      let learned = {};
+      for (let i = 0; i < 40 && !learned.CometUFIFeedbackReactMutation; i++) {
+        await page.waitForTimeout(250);
+        learned = (await sw.evaluate(async () => (await chrome.storage.local.get("mfga:learnedOps"))["mfga:learnedOps"])) || {};
+      }
+      assert.equal(learned.CometUFIFeedbackReactMutation?.docId, "12345678901234567", "Facebook's own request is learned");
+      assert.equal(learned[FEED], undefined, "MFGA's replayed feed requests are not");
+    });
+  });
+});

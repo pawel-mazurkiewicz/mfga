@@ -37,7 +37,8 @@ Research behind every decision lives in `docs/research/` (summaries of the dossi
 7. **Fail open, visibly.** Every module runs in `safe()`; an exception disables that module for the page
    lifetime and is recorded in the health panel. Unparseable data is passed through, never guessed at.
 8. **Behave like a person.** One GraphQL request in flight, ≥1.5 s jittered spacing, fetch only on user
-   intent ("Older Posts" or scroll), nothing while the tab is hidden, stop everything on checkpoint markers.
+   intent ("Older Posts" or scroll), nothing while the tab is hidden, stop everything on checkpoint markers
+   (in every tab, for 6 h), comment previews rationed (6 a minute, 60 a page).
 
 ---
 
@@ -54,7 +55,8 @@ facebook.com tab
 │   requireLazy(['<Op>_facebookRelayOperation']) → doc_id, posted back over the bridge. Nothing else.
 └─ extension background (Chrome + Firefox only)  src/background/background.js
     webRequest.onBeforeRequest(requestBody) on /api/graphql/ → learn {friendlyName → doc_id, variables}
-    of Facebook's own requests (invisible to page JS); answers registry queries from the content script.
+    of Facebook's own requests (invisible to page JS; MFGA's own, announced by the content script, are
+    skipped); answers registry queries from the content script.
 ```
 
 The isolated world talks to the MAIN-world helper over `src/shared/bridge.js` (CustomEvent on `document`,
@@ -103,9 +105,12 @@ Variables are the page's own SSR preloader variables with only `feedStyle`, `ord
 `refreshMode:"COLD_START"` and `scale` (raised to ≥2 for crisp 50px avatars) overridden. Page 1 of the
 filter the user landed on is read straight from the SSR payload (zero requests).
 
-If no usable query descriptor exists (no preloader, nothing learned yet) the home page shows Facebook's
-own feed, cleaned and re-skinned (§4), and the status box explains why; "News Feed" then does a hard
-navigation to `/` so the next load carries a preloader.
+If no usable query descriptor exists (no preloader, nothing learned yet), or the first page of our feed
+fails for good in every source (say every doc_id we know was retired by a deploy), the home page shows
+Facebook's own feed, cleaned and re-skinned (§4); every 2010 link to Home ("News Feed") then does a hard
+navigation to `/` so the next load carries a preloader. A doc_id from the probe or the fallback table is
+sent with the newest variables template known (`src/data/ops.js`), so a deploy alone rarely gets that far. After a
+checkpoint halt a `.mfga-notice` on Home says why Facebook's feed is back.
 
 ### 3.2 Story model (`src/data/extract.js`)
 

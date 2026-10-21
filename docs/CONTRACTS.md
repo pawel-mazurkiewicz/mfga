@@ -40,7 +40,9 @@ decisions: `docs/research/*.md` (graphql-protocol, dom-feed, dom-chrome, retro-s
 * Root state lives in attributes on `<html>` (Facebook owns `html.className`):
   `data-mfga` (present when enabled), `data-mfga-theme`, `data-mfga-shell`, `data-mfga-route`
   (`home` | `groups-feed` | `page`), `data-mfga-feed` (`ours` | `native`), `data-mfga-font`
-  (`lucida` | `tahoma`), `data-mfga-fixed-header`, `data-mfga-skin`.
+  (`lucida` | `tahoma`), `data-mfga-fixed-header`, `data-mfga-dialog` (a Facebook dialog is open; kept by the
+  layout only while the bar is fixed), `data-mfga-skin`. Never write `:has()` anchored on `html`/`body`: every
+  DOM change on the page then restyles the whole document.
 * 2010 palette (canonical): blue `#3B5998`, headNav `#627AAD`, dark border `#29447E`/`#1D4088`,
   link `#3B5998`, text `#333`, meta gray `#808080`, light gray `#999`, separators `#E9E9E9`/`#CCC`,
   selected nav `#D8DFEA`, UFI `#EDEFF4` with `#E5EAF1`/white separators, input border `#BDC7D8`,
@@ -123,7 +125,11 @@ createGqlClient({ platform, harvest, minGapMs = 1500, onHalt }):
   { request(friendlyName, docId, variables): Promise<{ data, errors, lines }>,
     halted: boolean, stats(): object }
   // single request in flight, jittered spacing, waits while document.hidden, token-error refresh +
-  // one retry, checkpoint/account-warning markers -> halt everything and call onHalt(reason)
+  // one retry, checkpoint/account-warning markers -> halt everything and call onHalt(reason).
+  // Halts (6 h) and rate-limit cooldowns are recorded in platform.storage "mfga:guard" and obeyed by every
+  // tab and later pages (a stored halt sets `halted` at once and calls onHalt when it refuses a request).
+  // 3 failed requests in a row (token/auth/server/network) pause the client for 3 min. A timed-out request
+  // keeps the queue until its fetch settles.
 
 // src/data/ops.js
 export const FALLBACK_DOC_IDS: Record<string, string>   // graphql-protocol §14, newest per op
@@ -133,22 +139,27 @@ createOpRegistry({ platform, harvest }):
     snapshot(): object }
   // order: SSR preloader -> background-learned -> persisted cache ("mfga:ops") -> MAIN-world probe
   // (platform.page?.requireOp) -> FALLBACK_DOC_IDS. Persist learned/probed ids with timestamp.
+  // An id without variables (probe, fallback) borrows the newest template known for that operation, even
+  // one whose own id was invalidated (doc_ids rotate per deploy, variables rarely). invalidate() also
+  // re-reads the background at once.
 
 // src/data/feed-source.js
 export const FEED_STYLES = { friends: "MOST_RECENT_FRIENDS_FEED", groups: "MOST_RECENT_GROUPS_FEED",
   pages: "MOST_RECENT_PAGES_FEED", favorites: "FAVORITES_FEED", all: "MOST_RECENT_FEED_DEFAULT",
   top: "DEFAULT" }
-createFeedSource({ name, client, ops, harvest, classifier, scale }):
+createFeedSource({ name, client, ops, harvest, classifier, scale, ssr = true }):
   { name, done: boolean, next(): Promise<{ stories: Story[], dropped: Record<string, number> }>,
     reset(): void }
   // CometModernHomeFeedQuery with the preloader's variables; override feedStyle/orderby
   // (top: ["TOP_STORIES"], others ["MOST_RECENT"]), feedEndCursor, refreshMode "COLD_START",
   // scale = max(2, preloader scale). First page from harvest.prefetched when the preloader's own
-  // feedStyle matches. Stops on has_next_page false, null or repeated cursor.
+  // feedStyle matches and `ssr` (main passes false once the page is minutes old). Stops on
+  // has_next_page false, null or repeated cursor.
 
 // src/data/merge.js
 createMergedFeed({ sources: FeedSource[], pageSize = 10, keywords = [] }):
-  { more(): Promise<Story[]>, exhausted: boolean, stats(): object }
+  { more(): Promise<Story[]>, exhausted: boolean, stats(): object, cancel(): void }
+  // cancel(): abandoned (rebuilt / view destroyed): no further source is asked, more() resolves [].
   // watermark merge (graphql-protocol §9): emit only stories newer than every unfinished source's
   // oldest buffered story; fetch from the source holding the watermark; dedup by key, union `sources`.
 
@@ -242,7 +253,9 @@ export function dialogCss(): string
 
 * `src/main.js`: `export async function boot(platform)` — the only place that wires modules together.
 * `src/page/main-world.js`: MAIN-world helper (bridge server: `requireOp`, `navigate`).
-* `src/background/background.js`: webRequest learner + `runtime.onMessage` (`getLearnedOps`).
+* `src/background/background.js`: webRequest learner + `runtime.onMessage` (`getLearnedOps`; `ownRequest`
+  {name, docId}: the content script's platform.fetch announces each of MFGA's own GraphQL requests before
+  sending it, and the learner skips that request, so a replayed old doc_id never looks freshly learned).
 * `platform/extension/{chrome,firefox}`: manifests, content entry (`boot(chromePlatform)`).
 * `platform/userscript`: metadata block + entry (`boot(userscriptPlatform)`).
 * `scripts/build.mjs`: esbuild bundles → `dist/`.

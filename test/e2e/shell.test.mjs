@@ -166,6 +166,7 @@ const SAMPLES = [
   ["search field", 250, 22, "#FFFFFF"],
   ["selected nav row", 150, 131, "#D8DFEA"],
   ["left separator", 179, 300, "#CCCCCC"],
+  ["nav group rule", 60, 234, "#F7F7F7"],
   ["right header rule", 800, 77, "#E9E9E9"],
   ["left column paper", 150, 240, "#FFFFFF"],
   ["content paper", 400, 50, "#FFFFFF"],
@@ -380,6 +381,86 @@ describe("2010 shell on Home", () => {
     assert.ok(footer.top >= m2.top + m2.height, "footer below the main column");
   });
 
+  it("starts the column's content at the slot's edge even when Facebook pads [role=main]", async () => {
+    // Facebook pads its feed column (the fake site: 16px 16px 40px); the stream must still fill x 195-715, y 61.
+    const html = FIXTURE.replace("[role=main] { width: 100%; max-width: 680px; padding: 16px 0 0; }", "[role=main] { width: 100%; max-width: 680px; padding: 16px 16px 40px; }");
+    assert.notEqual(html, FIXTURE);
+    const page = await openShell({ html });
+    const m = await rect(page, "[data-mfga-main]");
+    assert.deepEqual([m.left, m.top, m.width], [345, 61, 520]);
+    const first = await rect(page, '[role="main"] [aria-label="Create a post"]');
+    assert.deepEqual([first.left, first.top, first.width], [345, 61, 520]);
+  });
+
+  it("sets the bar's links and the left column's text on the 2010 capture's baselines", async () => {
+    const page = await openShell();
+    // The top of a 0×0 inline-block on the baseline is the baseline; glyphs end there whatever the font.
+    const geometry = () =>
+      page.evaluate(() => {
+        const baseline = (el) => {
+          const probe = document.createElement("span");
+          probe.style.cssText = "display:inline-block;width:0;height:0;vertical-align:baseline";
+          el.insertBefore(probe, el.firstChild);
+          const y = probe.getBoundingClientRect().top + scrollY;
+          probe.remove();
+          return y;
+        };
+        const top = (el) => el.getBoundingClientRect().top + scrollY;
+        const rows = [...document.querySelectorAll(".mfga-shell-left > ul:first-of-type > li > a, .mfga-shell-left > .mfga-nav-sep-apps + ul > li > a")];
+        const seps = [...document.querySelectorAll(".mfga-shell-left .mfga-nav-sep")];
+        const chat = document.querySelector(".mfga-nav-chat .mfga-nav-title");
+        return {
+          links: [...document.querySelectorAll(".mfga-header-link")].map(baseline),
+          rowTops: rows.map(top),
+          // how far under its line's top this font draws the baseline (Tahoma: ≈10.9, the capture: 10)
+          k: baseline(rows[0]) - (top(rows[0]) + 3),
+          more: baseline(document.querySelector(".mfga-nav-more")),
+          seps: seps.map(top),
+          chatSep: top(chat.previousElementSibling),
+          chatTitle: baseline(chat),
+        };
+      });
+    const g = await geometry();
+    assert.equal(new Set(g.links).size, 1, `Home, Profile and Account share one baseline: ${g.links}`);
+    // retro-spec §4 (glyph bottoms 10px under each 13px line's top): rows 121, 142, …, 205, then 247 …;
+    // the first rule at 234; "More" 36px under the last row's top and the next rule at +46; "Chat with Friends" 20px under its rule.
+    assert.deepEqual(g.rowTops.slice(0, 6), [121, 142, 163, 184, 205, 247]);
+    const last = g.rowTops[g.rowTops.length - 1];
+    assert.equal(g.seps[0], 234, "the rule between the two nav lists");
+    assert.equal(g.more - g.k, last + 26, "More ▾");
+    assert.equal(g.seps[1], last + 46, "the rule under More ▾");
+    assert.equal(g.chatTitle - g.k, g.chatSep + 10, "Chat with Friends");
+
+    await page.click(".mfga-header-account-btn");
+    const open = await geometry();
+    assert.deepEqual(open.links, g.links, "opening the account menu does not move its label");
+  });
+
+  it("keeps News Feed's filters closed on Home; News Feed opens them, a filter route shows them selected", async () => {
+    const page = await openShell();
+    const nav = () =>
+      page.evaluate(() => ({
+        rows: [...document.querySelectorAll(".mfga-shell-left .mfga-nav-sub .mfga-nav-item")].map((li) => li.dataset.key),
+        expanded: document.querySelector('.mfga-nav-item[data-key="newsFeed"] a').getAttribute("aria-expanded"),
+        selected: [...document.querySelectorAll(".mfga-shell-left .mfga-nav-selected")].map((li) => li.dataset.key),
+        path: location.pathname + location.search,
+      }));
+    assert.deepEqual(await nav(), { rows: [], expanded: "false", selected: ["newsFeed"], path: "/" }, "the 2010 Home shows News Feed alone");
+    await page.click('.mfga-nav-item[data-key="newsFeed"] a');
+    assert.deepEqual(await nav(), { rows: ["feed_friends", "feed_groups", "feed_pages", "feed_favorites"], expanded: "true", selected: ["newsFeed"], path: "/" });
+    assert.equal(await page.evaluate(() => document.activeElement?.closest(".mfga-nav-item")?.dataset.key), "newsFeed", "focus stays on News Feed");
+    await page.click('.mfga-nav-item[data-key="newsFeed"] a');
+    assert.deepEqual((await nav()).rows, []);
+
+    const filtered = await openShell({ url: `${FB}/?filter=groups&sk=h_chr`, html: withoutRails(FIXTURE) });
+    const f = await filtered.evaluate(() => ({
+      rows: [...document.querySelectorAll(".mfga-shell-left .mfga-nav-sub .mfga-nav-item")].map((li) => li.dataset.key),
+      selected: [...document.querySelectorAll(".mfga-shell-left .mfga-nav-selected")].map((li) => li.dataset.key),
+      expanded: document.querySelector('.mfga-nav-item[data-key="newsFeed"] a').hasAttribute("aria-expanded"),
+    }));
+    assert.deepEqual(f, { rows: ["feed_friends", "feed_groups", "feed_pages", "feed_favorites"], selected: ["feed_groups"], expanded: false });
+  });
+
   it("lets clicks reach the shell through Facebook's wrappers, and Facebook's column stays interactive", async () => {
     const page = await openShell();
     assert.equal(await hitOwner(page, 150 + 60, 151), "shell:Messages (1)");
@@ -491,7 +572,17 @@ describe("navigation", () => {
 
   it("leaves modified clicks to the browser and routes search and jewels", async () => {
     const page = await openShell({ cfg: { helper: true } });
+    // The browser's own new-tab load escapes the context's routes and reaches the real facebook.com, whose answer
+    // signs the whole context out (c_user deleted). Record what MFGA did with the click, then cancel the tab.
+    await page.evaluate(() =>
+      addEventListener("click", (e) => {
+        if (!e.ctrlKey) return;
+        window.__ctrlClick = { mfgaPrevented: e.defaultPrevented };
+        e.preventDefault();
+      }),
+    );
     await page.click(".mfga-shell-left .mfga-nav-item[data-key=events] a", { modifiers: ["Control"] });
+    assert.deepEqual(await page.evaluate(() => window.__ctrlClick), { mfgaPrevented: false }, "the click is left to the browser");
     assert.deepEqual(await page.evaluate(() => __mfga.state.navCalls), []);
     await page.click(".mfga-header-search-btn");
     assert.equal(await page.evaluate(() => document.activeElement.className), "mfga-header-search-input", "empty search focuses the box");
@@ -518,6 +609,34 @@ describe("layout", () => {
     save("home-1000.png", await page.screenshot());
   });
 
+  it("leaves an idle page alone: no layout rewrites at a fractional offset, and the footer never restyles the page", async () => {
+    // Facebook's column usually sits at a fractional x (centred flex children, browser zoom). The measured
+    // offset then came back a hundredth of a pixel off after it was applied (layout snaps to 1/64 px), so the
+    // :root variables were rewritten every second (-35.16, -35.14, -35.16 ...), each time restyling the page.
+    const html = FIXTURE.replace("</head>", "<style>.xcenter{padding-left:.3px}</style></head>");
+    const page = await openShell({ html });
+    await page.waitForTimeout(1200);
+    await settle(page);
+    const idle = await page.evaluate(async () => {
+      let writes = 0;
+      const mo = new MutationObserver((records) => (writes += records.length));
+      mo.observe(document.getElementById("mfga-layout-vars"), { childList: true, characterData: true, subtree: true });
+      mo.observe(document.getElementById("mfga-shell"), { attributes: true, attributeFilter: ["style"] });
+      await new Promise((r) => setTimeout(r, 2600));
+      mo.disconnect();
+      return {
+        writes,
+        rootFooter: getComputedStyle(document.documentElement).getPropertyValue("--mfga-footer-top"),
+        hostFooter: document.getElementById("mfga-shell").style.getPropertyValue("--mfga-footer-top"),
+      };
+    });
+    assert.equal(idle.writes, 0, "layout variables rewritten on an idle page");
+    assert.equal(idle.rootFooter, "", "the footer position is not a :root variable (changing one restyles every element)");
+    assert.match(idle.hostFooter, /^\d+(\.\d+)?px$/);
+    const m = await rect(page, "[data-mfga-main]");
+    assert.ok(Math.abs(m.left - 345) < 0.1 && m.top === 61, `main column at ${m.left},${m.top}`);
+  });
+
   it("switches modes on route changes: groups feed, plain pages, and back home", async () => {
     const page = await openShell({ cfg: { helper: true } });
     await page.evaluate(() => __mfga.navigator.go("/groups/feed/"));
@@ -539,7 +658,8 @@ describe("layout", () => {
       header: getComputedStyle(document.querySelector(".mfga-header")).display,
       chat: getComputedStyle(document.querySelector(".mfga-chat-tab")).display,
     }));
-    assert.deepEqual(plain, { marks: 0, rails: "visible", left: "none", header: "block", chat: "flex" });
+    // Facebook's page paints over our z-index-0 chat tab here (raising it would cover Facebook's docked chat).
+    assert.deepEqual(plain, { marks: 0, rails: "visible", left: "none", header: "block", chat: "none" });
     const footer = await rect(page, "#mfga-shell .mfga-footer");
     assert.deepEqual([footer.left, footer.width], [150, 980]);
     save("page-mode.png", await page.screenshot({ fullPage: true }));
@@ -617,6 +737,29 @@ describe("layout", () => {
     await b.context.addCookies([{ name: "c_user", value: "100001234567890", domain: ".facebook.com", path: "/" }]);
     await other.evaluate(() => localStorage.clear());
   });
+
+  it("looks for Facebook's rails only on Home, where it reads them, never on the groups feed", async () => {
+    // Each lookup walks the whole document; on the groups feed that is Facebook's whole feed (~100k elements on
+    // a long one), and the reader's rescan ran two of them every 2 s although nothing reads the rails there.
+    const page = await openShell({ cfg: { helper: true } });
+    await page.evaluate(() => {
+      window.__railLookups = 0;
+      const qsa = Document.prototype.querySelectorAll;
+      Document.prototype.querySelectorAll = function (sel) {
+        if (/role="(navigation|complementary)"/.test(sel)) window.__railLookups++;
+        return qsa.call(this, sel);
+      };
+    });
+    await page.waitForFunction(() => window.__railLookups > 0, null, { timeout: 5000 });
+    await page.evaluate(() => __mfga.navigator.go("/groups/feed/"));
+    await page.waitForFunction(() => document.documentElement.dataset.mfgaRoute === "groups-feed");
+    await page.evaluate(() => (window.__railLookups = 0));
+    await page.waitForTimeout(2600);
+    assert.equal(await page.evaluate(() => window.__railLookups), 0, "rail lookups on the groups feed");
+    await page.goBack();
+    await page.waitForFunction(() => document.documentElement.dataset.mfgaRoute === "home");
+    await page.waitForFunction(() => window.__railLookups > 0, null, { timeout: 5000 });
+  });
 });
 
 describe("account menu and settings", () => {
@@ -686,6 +829,33 @@ describe("account menu and settings", () => {
     await page.mouse.wheel(0, 500);
     await page.waitForTimeout(100);
     assert.match(await hitOwner(page, 1100, 20), /^shell:/, "the fixed bar stays above the scrolled page");
+  });
+
+  it("keeps the fixed bar below Facebook's dialogs as they open and close, in the same frame", async () => {
+    const page = await openShell({ cfg: { look: { fixedHeader: true } } });
+    // The fixture keeps a hidden composer portal in the page; start from a page without dialogs.
+    await page.evaluate(() => document.getElementById("fx-portal").parentElement.remove());
+    await page.waitForFunction(() => !document.documentElement.hasAttribute("data-mfga-dialog"));
+    const z = () => getComputedStyle(document.querySelector("#mfga-shell .mfga-header")).zIndex;
+    assert.equal(await page.evaluate(z), "1");
+    const seen = await page.evaluate(async (zSrc) => {
+      const zIndex = new Function(`return (${zSrc})()`);
+      const portal = document.createElement("div");
+      const dialog = portal.appendChild(document.createElement("div"));
+      dialog.setAttribute("role", "dialog");
+      dialog.textContent = "Photo";
+      document.body.appendChild(portal);
+      await Promise.resolve(); // mutation observers run before this continuation, long before the next frame
+      const open = zIndex();
+      // Feed churn without dialogs leaves the mark alone.
+      document.querySelector('[role="main"]').appendChild(document.createElement("div"));
+      await Promise.resolve();
+      const churn = zIndex();
+      portal.remove();
+      await Promise.resolve();
+      return { open, churn, closed: zIndex() };
+    }, z.toString());
+    assert.deepEqual(seen, { open: "0", churn: "0", closed: "1" });
   });
 
   it("tears down cleanly when the shell is switched off", async () => {

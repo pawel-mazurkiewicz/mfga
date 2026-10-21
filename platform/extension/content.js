@@ -7,13 +7,37 @@ const isFirefox = typeof globalThis.browser !== "undefined" && typeof globalThis
 // The MAIN-world helper (manifest world:"MAIN") and this script share a per-load channel id (bridge.js).
 const channel = joinChannel();
 const bridge = channel ? createBridgeClient(channel) : null;
+const ANNOUNCE_WAIT_MS = 500;
+
+/**
+ * Tells the background that the GraphQL request about to go out is MFGA's own, so its learner (which sees every
+ * request to /api/graphql/) does not take our replay of an old doc_id for what Facebook sends today. Waits for
+ * the answer (the request must not overtake it), but never long: a sleeping background only costs that.
+ */
+async function announceOwn(init) {
+  try {
+    const form = new URLSearchParams(typeof init?.body === "string" ? init.body : "");
+    const name = form.get("fb_api_req_friendly_name");
+    const docId = form.get("doc_id");
+    if (!name || !docId) return;
+    let timer;
+    const late = new Promise((resolve) => (timer = setTimeout(resolve, ANNOUNCE_WAIT_MS)));
+    await Promise.race([api.runtime.sendMessage({ type: "mfga:ownRequest", name, docId }).catch(() => {}), late]);
+    clearTimeout(timer);
+  } catch {
+    // announcing is best effort
+  }
+}
 
 const platform = {
   kind: isFirefox ? "firefox" : "chrome",
   version: api.runtime.getManifest().version,
   // Chrome: a content-script fetch to the page's own origin carries the page's Origin and cookies.
   // Firefox: the global fetch uses the extension principal; content.fetch makes the request as the page.
-  fetch: (url, init) => (isFirefox ? globalThis.content.fetch(url, init) : fetch(url, init)),
+  async fetch(url, init) {
+    await announceOwn(init);
+    return isFirefox ? globalThis.content.fetch(url, init) : globalThis.fetch(url, init);
+  },
   storage: {
     async get(key) {
       const r = await api.storage.local.get(key);

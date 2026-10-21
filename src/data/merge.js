@@ -9,8 +9,9 @@ const FATAL = new Set(["auth", "checkpoint"]);
 const TRANSIENT = new Set(["network", "server", "rate", "soft-block", "token"]);
 
 /**
- * createMergedFeed({ sources, pageSize, keywords }) -> { more(): Promise<Story[]>, exhausted, stats() }
- * A single source keeps its own order (Top News is ranked, not chronological).
+ * createMergedFeed({ sources, pageSize, keywords }) -> { more(): Promise<Story[]>, exhausted, stats(), cancel() }
+ * A single source keeps its own order (Top News is ranked, not chronological). cancel(): the feed was
+ * abandoned (rebuilt, or its view destroyed); it asks its sources for nothing more and more() resolves [].
  * Hooks: maxFetches (source requests per more() call, a safety valve), matches (WP-A matchesKeywords).
  */
 export function createMergedFeed({ sources, pageSize = 10, keywords = [], maxFetches = 6, matches = matchesKeywords }) {
@@ -18,13 +19,19 @@ export function createMergedFeed({ sources, pageSize = 10, keywords = [], maxFet
   const ordered = lanes.length > 1;
   const byKey = new Map();
   const counts = { emitted: 0, duplicates: 0, keyword: 0 };
-  const feed = { more, exhausted: lanes.length === 0, stats };
+  let cancelled = false;
+  const feed = { more, exhausted: lanes.length === 0, stats, cancel };
   return feed;
+
+  function cancel() {
+    cancelled = true;
+  }
 
   async function more() {
     const out = [];
     let fetches = 0;
     for (;;) {
+      if (cancelled) return [];
       drain(out);
       if (out.length >= pageSize) break;
       const lane = laggard();
@@ -32,6 +39,7 @@ export function createMergedFeed({ sources, pageSize = 10, keywords = [], maxFet
       try {
         await pull(lane);
       } catch (err) {
+        if (cancelled) return [];
         if (FATAL.has(err?.kind) || TRANSIENT.has(err?.kind)) {
           if (out.length) break; // show what we have; the next call retries
           throw err;

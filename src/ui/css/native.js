@@ -20,7 +20,12 @@ const IN = (part) => `[data-mfga-part="${part}"]`; // for descendant chains afte
 
 function skinRules() {
   return `
-${S} { --mfga-indent: 58px; }
+${S} {
+  /* 50px picture + 8px gap. Facebook insets a post's header and message text 12px from the card's edge while its
+     action bar, comments and comment box span the card (2026-10 layout rects of 100 live posts: avatar x=12, name 60,
+     message text 12, action row 0 with its first button at 4), so those parts and the attachments take the inset too. */
+  --mfga-indent: 58px; --mfga-pad: 12px;
+}
 ${S} [aria-posinset]:not([role]) {
   border-bottom: 1px solid #E9E9E9;
   --card-corner-radius: 0px; --card-box-shadow: none; --shadow-base: none; --shadow-2: transparent;
@@ -45,7 +50,7 @@ ${P("message")} { margin-inline-start: var(--mfga-indent) !important; }
 ${P("message")}, ${P("message")} * { font-size: 13px !important; line-height: 16px !important; color: #333 !important; }
 ${P("message")} a, ${P("message")} a *, ${P("message")} [role="button"] { color: #3B5998 !important; font-weight: normal !important; }
 
-${P("attachment")} { margin-inline: calc(var(--mfga-indent) + 16px) 16px !important; }
+${P("attachment")} { margin-inline: calc(var(--mfga-indent) + var(--mfga-pad)) var(--mfga-pad) !important; }
 ${P("attachment")} * { border-radius: 0 !important; }
 /* Shared posts and reels inside an attachment: square avatars and blue names, like the post's own header. */
 ${P("attachment")} svg g[mask] { mask: none !important; }
@@ -56,7 +61,7 @@ ${P("attachment")} [data-ad-rendering-role="profile_name"] a, ${P("attachment")}
 
 ${P("actions")} {
   display: flex !important; flex-wrap: wrap !important; justify-content: flex-start !important; align-items: center !important;
-  gap: 0 !important; margin: 0 0 0 var(--mfga-indent) !important; padding: 3px 0 !important; border: 0 !important; min-height: 0 !important;
+  gap: 0 !important; margin: 0 0 0 calc(var(--mfga-indent) + var(--mfga-pad)) !important; padding: 3px 0 !important; border: 0 !important; min-height: 0 !important;
 }
 ${P("actions")} > * { flex: none !important; width: auto !important; margin: 0 !important; padding: 0 !important; }
 ${P("actions")} [role="button"]:not([data-mfga-action]):not([data-mfga-part="summary"] [role="button"]) { display: none !important; }
@@ -79,7 +84,7 @@ ${S} [data-mfga-action="comment"][data-mfga-count]::after { content: ${cssString
 ${S} [data-mfga-action="share"][data-mfga-count]::after { content: ${cssString(t("clean.share"))}; }
 
 ${P("summary")}, ${P("comments")}, ${P("composer")} {
-  background: #EDEFF4 !important; margin: 2px 0 0 var(--mfga-indent) !important; border: 0 !important; border-radius: 0 !important;
+  background: #EDEFF4 !important; margin: 2px var(--mfga-pad) 0 calc(var(--mfga-indent) + var(--mfga-pad)) !important; border: 0 !important; border-radius: 0 !important;
 }
 ${P("summary")} { padding: 5px !important; justify-content: flex-start !important; gap: 0 12px !important; }
 /* 2010 order: "Like · Comment · Share" first, then the light-blue box (likes, comments, composer). */

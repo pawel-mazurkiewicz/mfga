@@ -173,6 +173,24 @@ function untagAll(doc) {
   for (const attr of [PART_ATTR, ACTION_ATTR, COUNT_ATTR]) for (const el of doc.querySelectorAll(`[${attr}]`)) el.removeAttribute(attr);
 }
 
+// Inside a tagged comments box or a text box nothing that postParts reads can change: every finder skips
+// comments, the box never holds the author block, message, footer or composer (findComments), and adding or
+// removing comments inside it keeps it their common ancestor. A comments box left without comments is
+// re-tagged so its part goes away. (Not the composer row: before the first comment it may be the section the
+// comment list later mounts in.)
+const QUIET = `[${PART_ATTR}="comments"], [contenteditable="true"], [role="textbox"]`;
+
+/**
+ * Whether a change below `target` leaves the parts of `unit`'s post as they are. Comments streaming into an
+ * open thread, reaction docks on comments and typing used to re-run the whole post analysis on every change
+ * (about 1 ms per frame on a post with an open 30-comment thread).
+ */
+function quietChange(target, unit) {
+  const zone = target.closest?.(QUIET);
+  if (!zone || zone === unit || !unit.contains(zone)) return false;
+  return zone.getAttribute(PART_ATTR) !== "comments" || zone.querySelector('[role="article"]') != null;
+}
+
 /**
  * startSkin({ settings }) -> { stop() }. `settings` is the settings store (get/subscribe) or a plain
  * settings object; posts are tagged while settings.look.skinPosts is on.
@@ -204,7 +222,7 @@ export function startSkin({ settings } = {}) {
     safe("skin", (records) => {
       for (const rec of records) {
         const unit = closestUnit(rec.target);
-        if (unit) dirty.add(unit);
+        if (unit && !quietChange(rec.target, unit)) dirty.add(unit);
         for (const n of rec.addedNodes) {
           if (n.nodeType !== 1) continue;
           if (n.matches(UNIT_SELECTOR)) dirty.add(n);

@@ -169,3 +169,47 @@ test("late injection reads existing scripts; scripts added after load are picked
     await b.close();
   }
 });
+
+/** Serves `chunks` ([delay ms, text]) as one streamed HTML response. */
+function chunkServer(chunks) {
+  const server = http.createServer(async (req, res) => {
+    if (req.url !== "/") return res.writeHead(404).end();
+    res.writeHead(200, { "content-type": "text/html; charset=utf-8", "set-cookie": "c_user=100000000000077; Path=/" });
+    for (const [wait, text] of chunks) {
+      await new Promise((r) => setTimeout(r, wait));
+      res.write(text);
+    }
+    res.end();
+  });
+  return new Promise((resolve) => server.listen(0, "127.0.0.1", () => resolve(server)));
+}
+
+test("streamed blocks are read in page order: the first LSD frame is kept even when its block completes late", { skip }, async () => {
+  // A live page ships one LSD frame per SSR block and Facebook's own requests send the first. When the first
+  // block is split across network chunks, it completes in the same parser pass that inserts the next blocks.
+  const block = (lsd, dtsg, pad) =>
+    json({ require: [["ScheduledServerJS", "handle", null, [{ __bbox: { define: [["LSD", [], { token: lsd }, 323], ["DTSGInitData", [], { token: dtsg, async_get_token: "x" }, 3515], ["Pad", [], { pad }, 1]] } }]]] });
+  const first = block("LSDFIRST", "NAcFirst:17:1800000000", "x".repeat(20000));
+  const opening = sjs(first).slice(0, sjs(first).indexOf(">") + 1);
+  const half = Math.floor(first.length / 2);
+  const server = await chunkServer([
+    [0, `<!doctype html><html lang="en"><head><meta charset="utf-8">${opening}${first.slice(0, half)}`],
+    [300, `${first.slice(half)}</script>${sjs(block("LSDSECOND", "NAcSecond:17:1800000000", ""))}${sjs(block("LSDTHIRD", "NAcThird:17:1800000000", ""))}</head><body><div id="mount_0_0_Ab"></div>`],
+    [300, "<div>end</div></body></html>"],
+  ]);
+  const browser = await chromium.launch({ executablePath: CHROMIUM, headless: true, args: ["--no-proxy-server"] });
+  try {
+    const context = await browser.newContext();
+    await context.addInitScript({ content: await entry() });
+    const page = await context.newPage();
+    await page.goto(`http://127.0.0.1:${server.address().port}/`, { waitUntil: "load" });
+    await page.evaluate(() => window.__harvest.ready);
+    const r = await page.evaluate(readHarvest);
+    assert.equal(r.lsd, "LSDFIRST", "the first LSD in page order");
+    assert.equal(r.dtsg, "NAcThird:17:1800000000", "the last fb_dtsg in page order");
+    assert.ok(r.log.updates.length >= 1 && r.log.updates[0].t < r.log.dcl, "read while streaming, not only in the DOMContentLoaded sweep");
+  } finally {
+    await browser.close();
+    server.close();
+  }
+});

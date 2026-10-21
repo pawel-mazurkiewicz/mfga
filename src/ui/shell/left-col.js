@@ -15,7 +15,7 @@ function navRow(item) {
     { class: item.selected && "mfga-nav-selected", dataset: { key: item.key } },
     h(
       "a.mfga-nav-link",
-      { href: item.href, "aria-current": item.selected ? "page" : null },
+      { href: item.href, "aria-current": item.selected ? "page" : null, "aria-expanded": item.expanded == null ? null : String(item.expanded) },
       h("span.mfga-nav-icon", icon(item.icon)),
       h("span.mfga-nav-label", item.label),
       count(item.count),
@@ -24,7 +24,7 @@ function navRow(item) {
   );
 }
 
-/** 2010 showed News Feed's filters indented under it while you were on the home page. */
+/** News Feed's filters, indented under it while its list is open (2010's side-nav sub-items). */
 function feedFilters(items) {
   return h("li.mfga-nav-item.mfga-nav-subwrap", h("ul.mfga-nav-list.mfga-nav-sub", items.map(navRow)));
 }
@@ -73,11 +73,19 @@ function chat(model) {
   );
 }
 
+/** The News Feed row and, while its list is open, its filters. On Home the row says whether it is open. */
+function newsFeedRows(item, model, feedsOpen) {
+  if (!model.feeds?.length) return [navRow(item)];
+  const open = Boolean(model.feedsOpen || feedsOpen);
+  const row = navRow(model.feedsOpen ? item : { ...item, expanded: open });
+  return open ? [row, feedFilters(model.feeds)] : [row];
+}
+
 /**
- * Renders the column's content for a leftNavModel(). opts: {expanded, onMore, showChat}.
- * "More ▾" reveals the extra apps in place, as in 2010.
+ * Renders the column's content for a leftNavModel(). opts: {expanded, onMore, showChat, feedsOpen}.
+ * "More ▾" reveals the extra apps in place, as in 2010; feedsOpen opens News Feed's filters on Home.
  */
-export function renderLeftCol(model, { expanded = false, onMore, showChat = true } = {}) {
+export function renderLeftCol(model, { expanded = false, onMore, showChat = true, feedsOpen = false } = {}) {
   const more = expanded
     ? model.more.map(navRow)
     : h(
@@ -86,8 +94,8 @@ export function renderLeftCol(model, { expanded = false, onMore, showChat = true
       );
   return [
     me(model),
-    h("ul.mfga-nav-list", model.primary.flatMap((item) => (item.key === "newsFeed" && model.feeds?.length ? [navRow(item), feedFilters(model.feeds)] : [navRow(item)]))),
-    h("div.mfga-nav-sep"),
+    h("ul.mfga-nav-list", model.primary.flatMap((item) => (item.key === "newsFeed" ? newsFeedRows(item, model, feedsOpen) : [navRow(item)]))),
+    h("div.mfga-nav-sep.mfga-nav-sep-apps"),
     h("ul.mfga-nav-list", model.apps.map(navRow), more),
     section(t("nav.groups"), model.groups, "nav_groups"),
     section(t("nav.pages"), model.pages, "nav_pages"),

@@ -29,6 +29,9 @@ html[data-mfga-route="groups-feed"] [data-mfga-main]{width:${g.wide.w}px!importa
 
 function baseCss() {
   const g = GRID;
+  // On "page" routes Facebook's own page paints over our z-index-0 layers, so only the bar and the footer
+  // show. The chat tab is hidden there too: it would sit under Facebook's page (and still take clicks), and
+  // raising it would cover Facebook's docked chat, which stays available on those routes.
   return `
 ${S}{position:absolute;top:0;left:0;right:0;height:0;direction:ltr;font-family:${FONT};font-size:11px;line-height:1.28;color:#333;text-align:left}
 html[data-mfga-font="tahoma"] ${S}{font-family:${FONT_TAHOMA}}
@@ -44,7 +47,7 @@ ${S} .mfga-shell-backdrop{left:0;right:0;z-index:0;background:#fff;padding-botto
 ${S} .mfga-shell-page{position:absolute;top:0;left:max(0px,calc(50% - ${g.page / 2}px));width:${g.page}px;height:0}
 ${S} .mfga-shell-sep{left:${g.left.w}px;width:1px;z-index:0;background:#CCC}
 ${S} .mfga-shell-rule{left:${g.rule}px;width:1px;z-index:0;background:#EDEDED}
-html[data-mfga-route="page"] ${S} :is(.mfga-shell-backdrop,.mfga-shell-sep,.mfga-shell-rule,.mfga-shell-left,.mfga-shell-right),
+html[data-mfga-route="page"] ${S} :is(.mfga-shell-backdrop,.mfga-shell-sep,.mfga-shell-rule,.mfga-shell-left,.mfga-shell-right,.mfga-chat-tab),
 html[data-mfga-route="groups-feed"] ${S} :is(.mfga-shell-rule,.mfga-shell-right){display:none}
 `;
 }
@@ -54,7 +57,7 @@ function headerCss() {
   return `
 ${S} .mfga-header{position:absolute;top:0;left:0;right:0;min-width:${g.page}px;height:${g.bar}px;z-index:0;background:#3B5998}
 html[data-mfga-fixed-header] ${S} .mfga-header{position:fixed;z-index:1}
-html[data-mfga-fixed-header]:has([role="dialog"]:not([role="banner"] *)) ${S} .mfga-header{z-index:0}
+html[data-mfga-fixed-header][data-mfga-dialog] ${S} .mfga-header{z-index:0}
 html[data-mfga-native-banner] ${S} .mfga-header{visibility:hidden}
 ${S} .mfga-header.mfga-header-open{z-index:2}
 ${S} .mfga-header-page{position:relative;width:${g.page}px;height:${g.bar}px;margin:0 auto}
@@ -107,10 +110,11 @@ ${S} .mfga-nav-pic{display:block;width:16px;height:16px;object-fit:cover}
 ${S} .mfga-nav-count{color:#808080;font-weight:normal}
 ${S} .mfga-nav-arrow{margin-left:6px;vertical-align:0}
 ${S} .mfga-nav-sep{width:172px;height:1px;margin:7px 0 13px 6px;background:#F7F7F7}
+${S} .mfga-nav-sep-apps{margin:8px 0 12px 6px}
 ${S} .mfga-nav-more{display:block;padding:5px 0 0 6px;border:0;background:none;color:#3B5998;line-height:13px;cursor:pointer}
 ${S} .mfga-nav-more:hover{text-decoration:underline}
 ${S} .mfga-nav-more-arrow{margin-left:4px;vertical-align:2px}
-${S} .mfga-nav-title{margin-top:-3px;padding:0 0 5px 6px;color:#808080;font-weight:bold;line-height:13px}
+${S} .mfga-nav-title{margin-top:-4px;padding:0 0 5px 6px;color:#808080;font-weight:bold;line-height:13px}
 ${S} .mfga-nav-go-online{display:inline-block;margin-left:6px;line-height:14px}
 `;
 }

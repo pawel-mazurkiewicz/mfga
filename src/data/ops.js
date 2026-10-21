@@ -71,6 +71,7 @@ export function createOpRegistry({ platform, harvest, now = () => Date.now() }) 
   const memory = new Map(); // learn() entries
   const probes = new Map(); // name -> Promise<docId|null>, once per page
   const resolved = new Map(); // name -> {source, docId} of the last answer (diagnostics)
+  const retired = new Map(); // name -> variables template of an invalidated id (its successor's best guess)
   let cache = null; // Promise<Record<name, entry>>
   let background = null; // {at, ops: Promise<Record<name, LearnedOp>>}
 
@@ -93,7 +94,10 @@ export function createOpRegistry({ platform, harvest, now = () => Date.now() }) 
         const op = await tier(name);
         if (op && !bad.has(badKey(name, op.docId))) {
           resolved.set(name, { source: op.source, docId: op.docId });
-          return { ...op, variables: op.variables == null ? null : structuredClone(op.variables) };
+          // doc_ids rotate with every deploy, variables rarely do: an id without a template (probe, fallback)
+          // borrows the newest one known, even one whose own id was rejected.
+          const variables = op.variables ?? (await knownTemplate(name));
+          return { ...op, variables: variables == null ? null : structuredClone(variables) };
         }
       }
       resolved.set(name, null);
@@ -102,9 +106,16 @@ export function createOpRegistry({ platform, harvest, now = () => Date.now() }) 
     invalidate(name, docId) {
       bad.add(badKey(name, docId));
       health.count("ops.invalidate");
-      if (memory.get(name)?.docId === docId) memory.delete(name);
+      // A rejected id usually means a deploy: the background may have seen Facebook's own request with the new one.
+      background = null;
+      const mine = memory.get(name);
+      if (mine?.docId === docId) {
+        if (mine.variables) retired.set(name, mine.variables);
+        memory.delete(name);
+      }
       return loadCache().then((c) => {
         if (c[name]?.docId !== docId) return;
+        if (c[name].variables) retired.set(name, c[name].variables);
         delete c[name];
         return save(c);
       });
@@ -168,8 +179,21 @@ export function createOpRegistry({ platform, harvest, now = () => Date.now() }) 
     const docId = await platform.page.requireOp(name, PROBE_TIMEOUT_MS).catch(() => null);
     if (!DOC_ID.test(String(docId ?? ""))) return null;
     health.count("ops.probed");
-    persist(name, { docId: String(docId), variables: null, seenAt: now(), source: "probe", rev: currentRev() });
+    // Persisted with the template it will be sent with, so the next page can use it without a preloader.
+    persist(name, { docId: String(docId), variables: await knownTemplate(name), seenAt: now(), source: "probe", rev: currentRev() });
     return String(docId);
+  }
+
+  /** The newest variables template known for `name`, whatever happened to the doc_id it came with. */
+  async function knownTemplate(name) {
+    const known = [
+      harvest.preloaders?.get(name)?.variables,
+      memory.get(name)?.variables,
+      (await backgroundOps())[name]?.variables,
+      (await loadCache())[name]?.variables,
+      retired.get(name),
+    ];
+    return known.find((v) => v != null && typeof v === "object") ?? null;
   }
 
   function fromFallback(name) {

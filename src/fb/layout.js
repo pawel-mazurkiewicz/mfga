@@ -10,6 +10,7 @@ import { effectiveMode } from "./routes.js";
 export const HOST_ID = "mfga-shell";
 const VARS_ID = "mfga-layout-vars";
 const ENSURE_MS = 1000;
+const PUSH_VIEW_MIN_WIDTH = 450; // the post dialog is ~680px, the photo viewer full width; hovercards ~360px
 
 const hasColumns = (mode) => mode === "home" || mode === "groups-feed";
 

@@ -560,6 +560,7 @@ describe("layout", () => {
       dialog.setAttribute("role", "dialog");
       dialog.setAttribute("aria-label", "Pat Example's photo");
       dialog.id = "fx-push";
+      dialog.style.cssText = "position:fixed;inset:0";
       document.querySelector(".xmainwrap").after(dialog);
       __mfga.navigator.go("/photo/?fbid=1");
     });
@@ -567,6 +568,24 @@ describe("layout", () => {
     assert.equal(await page.evaluate(() => document.documentElement.dataset.mfgaRoute), "home");
     await page.evaluate(() => document.getElementById("fx-push").remove());
     await page.waitForFunction(() => document.documentElement.dataset.mfgaRoute === "page", null, { timeout: 3000 });
+  });
+
+  it("does not mistake a docked chat window or a hovercard for a push view", async () => {
+    const page = await openShell({ cfg: { helper: true } });
+    await page.evaluate(() => {
+      const layer = (label, css) => {
+        const d = document.createElement("div");
+        d.setAttribute("role", "dialog");
+        d.setAttribute("aria-label", label);
+        d.style.cssText = css;
+        document.querySelector(".xchat").appendChild(d);
+      };
+      layer("Kasia Nowak", "position:fixed;right:80px;bottom:0;width:328px;height:455px;background:#fff");
+      layer("Hovercard", "position:fixed;left:420px;top:300px;width:360px;height:220px;background:#fff");
+      __mfga.navigator.go("/friends/");
+    });
+    await page.waitForFunction(() => __mfga.state.routes.length === 1);
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.mfgaRoute), "page");
   });
 
   it("serves the Feeds filter routes, which have no rails, from the rail cache", async () => {

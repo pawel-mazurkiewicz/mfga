@@ -1,0 +1,27 @@
+// ==UserScript==
+// @name         MFGA - Make Facebook Great Again
+// @name:pl      MFGA - Facebook jak w 2010
+// @namespace    https://github.com/pawel-mazurkiewicz/mfga
+// @version      __VERSION__
+// @description  Facebook, the way it looked in 2010 - and a News Feed with only your friends, groups and pages. No ads, no suggestions, no reels.
+// @description:pl  Facebook taki jak w 2010 roku - Aktualności tylko od znajomych, grup i stron. Bez reklam, propozycji i rolek.
+// @author       pawel-mazurkiewicz
+// @homepageURL  https://github.com/pawel-mazurkiewicz/mfga
+// @supportURL   https://github.com/pawel-mazurkiewicz/mfga/issues
+// @updateURL    https://raw.githubusercontent.com/pawel-mazurkiewicz/mfga/main/dist/mfga.user.js
+// @downloadURL  https://raw.githubusercontent.com/pawel-mazurkiewicz/mfga/main/dist/mfga.user.js
+// @license      MIT
+// @match        https://www.facebook.com/*
+// @match        https://web.facebook.com/*
+// @icon         __ICON__
+// @run-at       document-start
+// @sandbox      raw
+// @inject-into  auto
+// @noframes
+// @grant        unsafeWindow
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_addValueChangeListener
+// @grant        GM_registerMenuCommand
+// @grant        GM_addElement
+// ==/UserScript==

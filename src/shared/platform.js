@@ -24,6 +24,8 @@
  * @property {(label: string, fn: () => void) => void} addMenuCommand
  *   Userscript manager menu / extension action. No-op when unavailable.
  * @property {string} version
+ * @property {{manager?: string, mode?: string, late?: boolean}} [diagnostics]
+ *   Facts about how this target was injected, shown in the Health tab.
  */
 
 /** A platform that does nothing; used as a base by targets and tests. */

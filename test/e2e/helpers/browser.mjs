@@ -72,7 +72,8 @@ export async function launchBrowser({ extensionPath = null, viewport = { width: 
         });
       }
     }
-    if (url.protocol === "data:" || url.protocol === "blob:") return route.continue();
+    // Never intercept chrome-extension:, data:, blob: loads (extension scripts would break).
+    if (!/^https?:$/.test(url.protocol)) return route.continue();
     return route.abort();
   });
 

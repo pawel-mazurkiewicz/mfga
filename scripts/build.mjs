@@ -34,7 +34,12 @@ function manifestFor(browser) {
   } else {
     m.background = { scripts: ["background.js"] };
     m.browser_specific_settings = {
-      gecko: { id: "mfga@pawel-mazurkiewicz.github.io", strict_min_version: "128.0" },
+      gecko: {
+        id: "mfga@pawel-mazurkiewicz.github.io",
+        strict_min_version: "128.0",
+        // Required for new AMO submissions since 2025-11-03; MFGA collects nothing.
+        data_collection_permissions: { required: ["none"] },
+      },
     };
   }
   return m;
@@ -58,7 +63,10 @@ async function buildExtension(browser) {
 }
 
 async function buildUserscript() {
-  const meta = readFileSync(path.join(ROOT, "platform/userscript/meta.txt"), "utf8").replace(/__VERSION__/g, VERSION);
+  const icon = `data:image/png;base64,${readFileSync(path.join(ROOT, "assets/icons/icon-32.png")).toString("base64")}`;
+  const meta = readFileSync(path.join(ROOT, "platform/userscript/meta.txt"), "utf8")
+    .replace(/__VERSION__/g, VERSION)
+    .replace(/__ICON__/g, icon);
   // The page-world helper is bundled separately and embedded as a string; the userscript injects it.
   const mainWorld = await build({
     ...common,
